@@ -67,11 +67,33 @@ class ModelClient:
     def complete(self, messages: List[Dict[str, str]], system: Optional[str] = None,
                  max_tokens: int = 512, mock_meta: Optional[Dict] = None,
                  temperature: float = 0.0) -> ModelResponse:
-        if self.provider == "anthropic":
-            return self._complete_anthropic(messages, system, max_tokens, temperature)
-        if self.provider == "openai":
-            return self._complete_openai(messages, system, max_tokens, temperature)
-        return self._complete_mock(messages, system, mock_meta or {})
+        if self.provider == "mock":
+            return self._complete_mock(messages, system, mock_meta or {})
+        fn = self._complete_anthropic if self.provider == "anthropic" else self._complete_openai
+        return self._with_retries(fn, messages, system, max_tokens, temperature)
+
+    @staticmethod
+    def _is_transient(e: Exception) -> bool:
+        s = (str(e) + " " + type(e).__name__).lower()
+        codes = ("429", "500", "502", "503", "529")
+        words = ("rate", "overloaded", "timeout", "timed out", "temporarily",
+                 "connection", "unavailable", "internalserver")
+        return any(c in s for c in codes) or any(w in s for w in words)
+
+    def _with_retries(self, fn, messages, system, max_tokens, temperature,
+                      attempts: int = 6) -> ModelResponse:
+        import random
+        import time
+        last = None
+        for i in range(attempts):
+            try:
+                return fn(messages, system, max_tokens, temperature)
+            except Exception as e:  # retry only transient errors; re-raise the rest immediately
+                last = e
+                if not self._is_transient(e) or i == attempts - 1:
+                    raise
+                time.sleep(min(60.0, 2.0 ** i) + random.uniform(0, 1.0))
+        raise last  # pragma: no cover
 
     # ---- real providers -------------------------------------------------
     def _complete_anthropic(self, messages, system, max_tokens, temperature) -> ModelResponse:
