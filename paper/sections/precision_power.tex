@@ -1,0 +1,72 @@
+\subsection{Statistical precision and power}
+\label{sec:results:precision}
+
+A negative result is only as informative as the precision behind it, so we
+report what our data can and cannot rule out rather than the trial counts
+alone. Throughout we attach exact one-sided $95\%$ Clopper--Pearson upper
+bounds to per-condition and pooled failure rates, and we report the minimum
+per-condition accuracy drop we could have detected at $80\%$ power, following
+the eval-uncertainty practice of \citet{miller2024errorbars}. The precision is
+deliberately and substantially \emph{uneven} across the design, and the
+strength of any individual claim should be read off the relevant bound below,
+not off the aggregate accuracy.
+
+\paragraph{Aggregate precision.} Pooling the registered grid across the four
+models (\texttt{gpt-5.5}, \texttt{gpt-5.4}, \texttt{gpt-5.4-mini},
+\texttt{claude-sonnet-4-6}; easy and hard probe sets) gives $7{,}330$
+present-needle trials with $48$ failures, for an overall present-needle
+accuracy of $0.9935$ and an exact one-sided $95\%$ Clopper--Pearson upper bound
+on the failure rate of $0.87\%$. This pooled bound is tight, but it aggregates
+over heterogeneous cells and over the single non-null cell
+(Table~\ref{tab:b2}); it should not be read as a per-condition guarantee, since
+length-driven degradation is a per-condition effect that pooling can mask.
+
+\paragraph{Per-condition precision is coarse for most cells.} Resolving the
+design to its finest grain---a condition is a model $\times$ probe set $\times$
+probe $\times$ context length cell, present-needle only ($120$ conditions)---the
+per-condition sample size ranges from $n=2$ to $n=432$, with a median of $24$.
+The corresponding exact one-sided $95\%$ Clopper--Pearson upper bounds on the
+per-condition failure rate have a median of $0.149$, a best (largest cell,
+$n=432$) of $0.0085$, and a worst (smallest cell, $n=2$) of $0.842$. Expressed
+as detectable effects, the minimum per-condition accuracy drop we could detect
+at $80\%$ power has a median of $0.065$, a best of $0.0037$ ($n=432$), and a
+worst of $0.553$ ($n=2$). For the smallest cells the data exclude only large
+per-condition collapses; a drop of, say, ten points within such a cell would
+frequently go undetected. We therefore do not interpret a flat $1.000$ in a
+small cell as a tightly bounded per-condition result.
+
+\paragraph{One arm is tightly powered; the others are breadth.} The
+per-condition precision is concentrated almost entirely in one arm. Pooled
+present-needle sample sizes are $6{,}030$ for \texttt{gpt-5.4-mini}, $720$ for
+\texttt{gpt-5.5}, $600$ for \texttt{gpt-5.4}, and $170$ for
+\texttt{claude-sonnet-4-6}. The depth of the design lives on
+\texttt{gpt-5.4-mini}: its largest cells reach $n=432$, where the failure-rate
+upper bound is $0.0085$ and the minimum detectable per-condition drop is
+$0.0037$. On that model, and only on that model, we can state that no
+length-driven per-condition degradation larger than roughly $0.4\%$ is
+consistent with the data on our controlled, synthetic, mechanically-scored
+probes up to 150k tokens. The frontier-tier arms (\texttt{gpt-5.5},
+\texttt{gpt-5.4}, \texttt{claude-sonnet-4-6}) are \emph{breadth} confirmation,
+not tightly-powered per-condition nulls: their cells are small (as small as
+$n=2$), so they can exclude only large per-condition drops. Their role is to
+show that the depth-arm pattern is not idiosyncratic to a single model or
+provider, not to bound small effects on each frontier model individually.
+
+\paragraph{What this supports.} Read together, the evidence supports a bounded
+statement: on these controlled, difficulty-invariant, mechanically-scored
+probes, for the four models tested and up to 150k tokens, we observe no
+measurable length-driven degradation, with the strength of that statement set
+by the bounds above---tight on the depth arm (\texttt{gpt-5.4-mini}, drops
+$>\!\sim\!0.4\%$ per condition excluded) and coarse but broad across the
+frontier-tier arms (only large per-condition drops excluded). The lone
+exception, HARD~B2 aggregation on \texttt{gpt-5.4-mini}
+(Table~\ref{tab:b2}), is itself measured in the best-powered cells, which is
+why a dip of order ten points there is detectable while comparable drops in
+small frontier-tier cells would not be. Two boundaries remain even at this
+precision. First, the controlled \texttt{end} arm equalizes the needle--probe
+distance but does not fully disentangle position, distance, and filler
+composition, so a small residual confound cannot be excluded. Second, this is
+a synthetic harness whose inputs may be cleaner than real multi-turn agentic
+workflows; these per-condition bounds describe raw input volume on controlled
+tasks and do not estimate volume's contribution in deployed agents, and they
+may age as model versions change.

@@ -25,38 +25,42 @@ Length-Driven Degradation in Frontier Models up to 150k Tokens}
 
 %% ===== abstract =====
 \begin{abstract}
-The prevailing narrative holds that long context degrades model quality---a ``context rot'' that erodes retrieval, state-tracking, and instruction-following as inputs grow~\cite{hong2025contextrot,liu2024lostmiddle,modarressi2025nolima}. We report a controlled, cross-provider \emph{null}: on a pre-registered fixed-needle/growing-haystack factorial that varies context volume against needle position, frontier-tier models exhibit no measurable context rot to 150{,}000 tokens, and even the smallest model we test shows at most a mild, single-probe slip. Across $12{,}582$ logged trials on five models and two providers, present-needle accuracy was $1.000$ at every context length and every position on lexical retrieval, a NoLiMa-style latent 2-hop probe, state-tracking, and instruction-adherence---even when an in-context authority actively argues against the rule. Overall present-needle accuracy was $0.9935$: of $7{,}338$ trials only $48$ failed, and \emph{every one} of those failures was a single model on a single probe---aggregation/counting on the \emph{smallest} model (gpt-5.4-mini, $0.943$ overall on hard probes; B2 accuracy $0.931 \to 0.833$ from 5k to 150k). The frontier-tier models gpt-5.5 and Claude Sonnet~4.6 hold $1.000$ across all lengths, so the dip reads as a capacity limit on the smallest model with a mild length interaction, not the broad volume-driven decay the folklore predicts. A $340$-trial robustness extension to a $3$-hop latent retrieval chain with a competing decoy (interference) is likewise $1.000$ for all three models tested. Validating controls confirm the probes are genuine: the no-needle control sits at chance ($0.000$ over $3{,}084$ trials), and the counterfactual-needle control returns the in-context value ($1.000$ over $2{,}160$ trials). We also report a cautionary scorer-artifact result: naive scoring (curly-apostrophe regex misses and refusals that quote the disallowed request) first manufactured an apparent ``catastrophic'' instruction-adherence collapse that vanished---to its true value of $1.000$---under document-level refusal detection with unit tests, underscoring that controlled context-rot claims are acutely sensitive to scoring and to reliance on automated judges~\cite{zheng2023judge}. We reframe accordingly: practitioner-felt degradation is not a function of raw context \emph{volume} on clean, explicit, lexically- or latently-cued tasks for current frontier models up to 150k; it is more consistent with iterative task/error dynamics---compounding mistakes, tool-loop drift, and ambiguity~\cite{orlanski2026slopcodebench}---than with context length per se. This bounds the phenomenon without denying all degradation: we do not test the far tail beyond 150k, and our probes are explicit by design; latent, non-lexical, and adversarially ambiguous settings remain the boundary for future work.
+Long-context evaluations have repeatedly found that growing an input degrades retrieval, state-tracking, and instruction-following~\cite{hong2025contextrot,liu2024lostmiddle,modarressi2025nolima}. We test whether that effect reproduces on four current models under a controlled, synthetic, mechanically-scored harness, and report a bounded negative result: on a pre-registered fixed-needle/growing-haystack factorial that crosses context volume with needle position, we observe \emph{no measurable length-driven degradation} on our probes, for the four models tested (gpt-5.5, gpt-5.4, gpt-5.4-mini, claude-sonnet-4-6), up to 150{,}000 tokens. Our precision is uneven, and we are explicit about it. The finding is tightly powered only on the depth model gpt-5.4-mini, which carries most of the data ($n$ up to $432$ per condition, $6{,}030$ present-needle trials pooled); there the data exclude per-condition accuracy drops larger than roughly $0.4\%$ at the best-powered cell. The three frontier-tier arms (gpt-5.5, gpt-5.4, claude-sonnet-4-6) are breadth confirmation across providers with coarse per-condition precision: cells run as small as $n=2$, so they exclude only large per-condition drops, not small ones. Across the $12{,}570$-trial registered grid, $7{,}330$ trials were present-needle with $48$ failures (overall present-needle accuracy $0.9935$; exact one-sided $95\%$ Clopper--Pearson upper bound on the failure rate $0.87\%$). Every failure was confined to one model on one probe---hard aggregation/counting on gpt-5.4-mini ($0.943$ overall on the hard set; per-length $0.931 \to 0.833$ from 5k to 150k), while gpt-5.5 and claude-sonnet-4-6 stay at $1.000$. Because the deficit is already present at the shortest context, it reads as a capacity limit of the smallest model with at most a mild length interaction. A $340$-trial extension to a $3$-hop latent retrieval chain with a competing decoy scored $1.000$ for all three arms tested. Validating controls behave as designed: no-needle retrieval sits at chance ($0.000$ over $3{,}230$ trials) and the counterfactual needle returns the in-context value ($1.000$ over $2{,}160$ trials). We also contribute a scorer-artifact cautionary result: naive scoring (a curly-apostrophe regex miss and refusals that quote the disallowed request) first manufactured an apparent catastrophic instruction-adherence collapse that resolved to $1.000$ under document-level refusal detection with unit tests, underscoring that controlled long-context claims are sensitive to scoring choices and to reliance on automated judges~\cite{zheng2023judge}. We state the reframe in bounded form: on these controlled tasks raw context volume did not by itself produce degradation, but we cannot determine its contribution in real multi-turn agentic workflows, where the degradation practitioners report may instead track iterative task and error dynamics~\cite{orlanski2026slopcodebench}. Residual confounds remain: needle position, retrieval distance, and haystack composition are crossed but not fully disentangled even with the needle-adjacent arm. External validity is limited: the synthetic harness may be too clean, and the result may age as model versions change.
 \end{abstract}
 
 %% ===== intro =====
 \section{Introduction}
 \label{sec:intro}
 
-A coding agent that begins a session sharp is widely believed not to stay sharp. As a session accumulates context---tool outputs, file rereads, diffs, dead ends, and its own prior reasoning---practitioners report that its behavior drifts: it rereads files it already read, re-edits code it already fixed, reintroduces regressions it already resolved, and seems to stop obeying instructions it acknowledged a thousand tokens ago. The premise behind this folklore is that raw context \emph{volume} itself degrades quality, well before the nominal window limit. That premise has real support in the controlled long-context literature: holding task difficulty fixed while growing input length has been shown to drag quality down across every frontier model tested at the time \cite{hong2025contextrot}, the effect is sharply position-dependent rather than uniform \cite{liu2024lostmiddle}, it survives once lexical shortcuts between query and evidence are removed \cite{modarressi2025nolima}, and nominal context size badly overstates the length at which a model remains usable \cite{hsieh2024ruler}. In the agentic regime the reported picture is worse still: as agents extend their own prior solutions or evolve a codebase over many turns, quality erodes monotonically and explicit quality guidance lowers the offset without bending the decay rate \cite{orlanski2026slopcodebench, deng2026evoclaw}.
+A coding agent that begins a session sharp is widely believed not to stay sharp. As a session accumulates context---tool outputs, file rereads, diffs, dead ends, and its own prior reasoning---practitioners report that its behavior drifts: it rereads files it already read, re-edits code it already fixed, reintroduces regressions it already resolved, and seems to stop obeying instructions it acknowledged a thousand tokens ago. One common premise behind this folklore is that raw context \emph{volume} itself degrades quality, well before the nominal window limit. That premise has support in the controlled long-context literature: holding task difficulty fixed while growing input length has been shown to drag quality down across the frontier models tested at the time \cite{hong2025contextrot}; the effect is sharply position-dependent rather than uniform \cite{liu2024lostmiddle}; it survives once lexical shortcuts between query and evidence are removed \cite{modarressi2025nolima}; and nominal context size can badly overstate the length at which a model remains usable \cite{hsieh2024ruler}. In the agentic regime the reported picture is worse still: as agents extend their own prior solutions or evolve a codebase over many turns, quality erodes monotonically and explicit quality guidance lowers the offset without bending the decay rate \cite{orlanski2026slopcodebench, deng2026evoclaw}.
 
-We set out to build on this premise---to detect that volume-driven decay live in a single run and intervene on it---and found that, for current frontier models on controlled tasks, the premise does not hold. This paper reports that null. Across five models from two providers (\texttt{gpt-5.5}, \texttt{gpt-5.4}, \texttt{gpt-5.4-mini}, and \texttt{claude-sonnet-4-6} as the four primary registered arms, with \texttt{claude-haiku-4-5} as a spot-check), on a needle-position $\times$ volume factorial that holds needle-to-probe distance fixed and so separates volume-driven rot from the \emph{lost-in-the-middle} position effect \cite{liu2024lostmiddle}, present-needle accuracy was \textbf{0.9935} overall ($48$ of $7{,}338$ trials failed), and a clean \textbf{1.000} on every probe type, length, and position for the frontier-tier models---with every one of those $48$ failures confined to a single model on a single probe (aggregation on the smallest model, \texttt{gpt-5.4-mini}). The curve is flat where the folklore predicts a falling one. It holds not only on lexically-cued easy probes but also on harder, latent probes designed to be where rot is most likely---NoLiMa-style 2-hop retrieval through an alias \cite{modarressi2025nolima}, aggregation over distributed changes, and instruction-adherence under a conflicting authority---where the only departure from a perfect score is mild aggregation slippage confined to the smallest model. The controls confirm the probes are real and not trivially leaked: a no-needle control sat at chance (accuracy \textbf{0.000} over 3084 trials) and did not rise with length, and a counterfactual-needle control scored \textbf{1.000} over 2160 trials, confirming the models read and use the in-context value rather than falling back on recency or memorized recall.
+We set out to reproduce that volume-driven decay in a controlled single-pass setting and instead measured no length-driven degradation on our probes for the models we tested. This paper reports that empirical result. We use a needle-position $\times$ volume factorial that holds needle-to-probe distance fixed in a dedicated arm, so that a volume effect can be read separately from the \emph{lost-in-the-middle} position effect \cite{liu2024lostmiddle}. Across four models from two providers (\texttt{gpt-5.5}, \texttt{gpt-5.4}, \texttt{gpt-5.4-mini}, and \texttt{claude-sonnet-4-6}) and $12{,}910$ logged trials, overall present-needle accuracy on the registered grid was $0.9935$ ($48$ of $7{,}330$ present-needle trials failed), and accuracy was $1.000$ at every tested length and position for every model except one. This held on lexically-cued probes and on harder latent probes designed to sit where degradation is most likely: a NoLiMa-style 2-hop retrieval through an alias \cite{modarressi2025nolima}, aggregation over distributed changes, and instruction-adherence under an in-context authority that argues against the rule. The single departure from a perfect score is a mild aggregation/counting slip on the smallest model.
 
-A central lesson of the run is methodological, and we elevate it to a contribution. The raw pipeline initially appeared to show \emph{catastrophic instruction-adherence rot}---instruction-probe accuracy near zero and declining with length. Both signatures were scorer artifacts, not findings, caught only by manual inspection of logged answers: a regex that missed typographic apostrophes (\texttt{can't}) and so read compliant refusals as violations, and a sentence-level matcher that misread refusals which quote the very request they decline. Document-level refusal detection with apostrophe normalization, plus unit tests for both failure patterns, collapsed the instruction probe to its true value of \textbf{1.000}. A naive study---an LLM judge or a bare regex, with no answer inspection and no controls~\cite{zheng2023judge}---would have shipped a dramatic false positive. Controlled context-rot claims are acutely sensitive to scoring, and the field's reliance on automated judges deserves the scrutiny this near-miss illustrates.
+The precision behind this result is uneven, and we are explicit about it. The tightly-powered evidence is on the depth model \texttt{gpt-5.4-mini}, which carries $6{,}030$ pooled present-needle trials and cells as large as $n=432$; in the best-powered cells the one-sided $95\%$ Clopper--Pearson upper bound on the per-condition failure rate is as low as $0.0085$, ruling out per-condition degradation above roughly $0.4\%$. The frontier-tier arms---\texttt{gpt-5.5} ($720$ pooled present-needle trials), \texttt{gpt-5.4} ($600$), and \texttt{claude-sonnet-4-6} ($170$)---are breadth confirmation with coarse per-condition precision: their smallest cells are as small as $n=2$, so for those models we can only exclude large per-condition drops, not small ones. We therefore read the frontier-tier results as a breadth check across providers, not as tightly-powered per-condition nulls.
 
-This null reframes the problem rather than dissolving it. Practitioner-felt ``context rot'' is real, but on controlled, difficulty-invariant tasks it is not a function of raw context volume for current frontier models up to 150k tokens. It is consistent instead with the \emph{iterative-task} degradation that long-horizon agent benchmarks report---compounding mistakes, tool-loop drift, regression accumulation, and ambiguity over many turns \cite{orlanski2026slopcodebench, deng2026evoclaw}---which lives in task and error dynamics, not in token count. That distinction matters for engineering. The dominant response to long sessions has been to reason in cost-per-token and to compress or evict tokens to hold the per-token bill down \cite{jiang2023llmlingua, jiang2024longllmlingua, packer2023memgpt, wang2023recursive, anthropic2026promptcaching}; but listed per-token price is itself an unreliable proxy for realized cost \cite{patil2026beyondtoken, chen2026pricereversal, erdil2025inference}, and cost-per-token holds quality fixed and asks what tokens cost---exactly backwards once the aim is to govern quality. The right currency for degradation is what a token \emph{buys} and how fast that decays \cite{erol2025costofpass, kwa2025metr}; our finding is simply that, on these tasks, what a token buys does \emph{not} decay with volume in the regime we tested.
+A central lesson of the run is methodological. The raw pipeline initially appeared to show a catastrophic instruction-adherence collapse---instruction-probe accuracy near zero and declining with length. Both signatures were scorer artifacts, not findings, caught only by inspection of logged answers: a regex that missed typographic apostrophes (\texttt{can't}) and so read compliant refusals as violations, and a sentence-level matcher that misread refusals which quote the very request they decline. Document-level refusal detection with apostrophe normalization, plus unit tests for both failure patterns, collapsed the instruction probe to its true value of $1.000$. A pipeline using a bare regex or an automated judge, with no answer inspection and no controls~\cite{zheng2023judge}, would have shipped a dramatic false positive. Controlled degradation claims are acutely sensitive to scoring, and the field's reliance on automated judges deserves the scrutiny this near-miss illustrates.
 
-We were careful not to manufacture the null by under-powering or over-controlling, and the design earns the right to report it. We logged \textbf{12582} total trials, of which \textbf{7338} were present-needle trials with only \textbf{48} present-needle failures; the overall present-needle accuracy of $0.9935$ ($48$ of $7{,}338$) places the exact $95\%$ binomial (Clopper--Pearson) upper bound on the failure rate at $0.87\%$, with every failure confined to one model on one probe. The harness assembles every input deterministically from a content seed, grades retrieval by exact nonce match so the parametric-recall and the ``judge rots too'' loopholes are closed \cite{kamradt2023niah, zheng2023judge}, and crosses needle position with volume so that the decisive \texttt{end} arm---needle adjacent to the probe at every length---licenses any volume reading independently of position \cite{liu2024lostmiddle}. We frame the result honestly as a bounded null, not a denial of all degradation: it speaks to raw volume on clean, explicit, and latent tasks up to 150k tokens, on two providers, and it does not claim that agents never get worse in long sessions.
+The controls indicate the probes have teeth and are not trivially leaked. The no-needle (absent) control sat at chance (accuracy $0.000$ over $3{,}230$ trials) and did not rise with length, so the probes cannot be answered from filler or parametric memory; the counterfactual-needle control scored $1.000$ over $2{,}160$ trials, indicating that models read and use the in-context value rather than falling back on recency or memorized recall. The harness assembles every input deterministically from a content seed, grades retrieval by exact nonce match so the parametric-recall and ``judge rots too'' loopholes are closed \cite{kamradt2023niah, zheng2023judge}, and crosses needle position with volume so that the \texttt{end} arm---needle adjacent to the probe at every length---reads volume independently of position \cite{liu2024lostmiddle}.
 
-\paragraph{Contributions.} We report a controlled null and the methodology that makes it trustworthy, organized as four claims:
+We frame the result as a bounded empirical report, not a denial of degradation. The numbers above describe controlled, synthetic, mechanically-scored probes, for the models tested, up to $150{,}000$ tokens. The reframe is correspondingly conservative: on these controlled tasks, raw volume did not by itself produce measurable degradation in the regime we swept, but we cannot determine its contribution in real multi-turn agentic workflows, which exercise iterative task and error dynamics that long-horizon benchmarks isolate---compounding mistakes, tool-loop drift, and regression accumulation~\cite{orlanski2026slopcodebench, deng2026evoclaw}---and which our static single-pass design does not test. We also do not fully disentangle position, distance, and composition even with the \texttt{end} arm, and the synthetic harness may be too clean relative to real sessions; results may further age as model versions change.
+
+\paragraph{Contributions.} We report a controlled empirical result and the methodology behind it, organized as four claims, each scoped to what we measured.
 \begin{itemize}
-  \item \textbf{C0 (manipulation check).} Controlled, volume-driven context rot does \emph{not} appear for current frontier models. On fixed-difficulty probes with needle-to-probe distance held constant---so the test cannot be confounded by position or lost-in-the-middle effects \cite{liu2024lostmiddle}---present-needle accuracy is \textbf{1.000} across all four primary arms, all probe types, all positions, and all lengths to 150k tokens. Because the manipulation check is negative, the live-detection and timed-intervention claims it was meant to gate are moot: there is no volume-driven rot to predict or to act on.
-  \item \textbf{C1 (the controlled cross-provider null).} On both lexically-cued and latent, NoLiMa-style probes \cite{modarressi2025nolima}, frontier models show zero measurable rot with growing context volume up to 150k tokens---across retrieval, state-tracking, aggregation, and instruction-adherence even under a conflicting authority---with validating controls (no-needle at chance, \textbf{0.000} over 3084 trials; counterfactual-needle \textbf{1.000} over 2160 trials). The single non-null is hard-aggregation slippage on the smallest model, \texttt{gpt-5.4-mini}, declining from \textbf{0.931} at 5k to \textbf{0.833} at 150k while \texttt{gpt-5.5} and \texttt{claude-sonnet-4-6} hold at \textbf{1.000} throughout; the slippage is partly present already at 5k, so it reads as capacity-limited miscounting with a mild length interaction rather than volume rot.
-  \item \textbf{C2 (the scorer-artifact cautionary result).} Naive scoring manufactured a false catastrophic instruction-rot (instruction-probe accuracy near zero, declining with length); document-level refusal detection, apostrophe normalization, and unit tests for both failure patterns collapsed it to its true value of \textbf{1.000}. The artifact is the contribution: controlled rot claims are scoring-sensitive, and automated-judge pipelines without answer inspection or controls can ship dramatic false positives \cite{zheng2023judge}.
-  \item \textbf{C3 (the reframe).} Because raw volume does not degrade quality on controlled tasks for current frontier models, practitioner-felt context rot is better located in iterative task and error dynamics---compounding mistakes and tool-loop drift over many turns \cite{orlanski2026slopcodebench, deng2026evoclaw}---than in token count. The research program should follow the degradation there, and should measure it in a quality-per-cost currency rather than raw token count \cite{erol2025costofpass, kwa2025metr}.
+  \item \textbf{C0 (manipulation check).} On fixed-difficulty probes with needle-to-probe distance held constant in the \texttt{end} arm---so a volume reading is not confounded by position or lost-in-the-middle effects \cite{liu2024lostmiddle}---we observe no measurable length-driven degradation on our controlled, synthetic, mechanically-scored probes, for the models tested, up to $150{,}000$ tokens. Because this check is negative for the regime we swept, the live-detection and timed-intervention machinery it was meant to gate has nothing to act on here.
+  \item \textbf{C1 (bounded cross-provider finding, uneven precision).} Across lexically-cued and latent NoLiMa-style probes \cite{modarressi2025nolima}---retrieval, state-tracking, aggregation, and instruction-adherence under a conflicting in-context authority---we find no measurable length-driven degradation up to $150{,}000$ tokens on our probes, with validating controls (no-needle at chance, $0.000$ over $3{,}230$ trials; counterfactual-needle $1.000$ over $2{,}160$ trials). Precision is uneven: the bound is tight on the depth model \texttt{gpt-5.4-mini} (up to $n=432$ per condition; best-cell one-sided $95\%$ Clopper--Pearson upper bound $0.0085$), whereas the frontier-tier arms are breadth confirmation with coarse per-condition precision (cells as small as $n=2$; only large per-condition drops can be excluded). The single non-null is hard-aggregation (B2) on \texttt{gpt-5.4-mini}, declining from $0.931$ at 5k to $0.833$ at 150k ($0.943$ overall on hard probes) while \texttt{gpt-5.5} and \texttt{claude-sonnet-4-6} hold at $1.000$; the slip is partly present already at 5k, so it reads as a capacity-limited miscount on the smallest model with a mild length interaction rather than volume-driven decay.
+  \item \textbf{C2 (scorer-artifact cautionary result).} Naive scoring manufactured an apparent catastrophic instruction-adherence collapse (instruction-probe accuracy near zero, declining with length); document-level refusal detection, apostrophe normalization, and unit tests for both failure patterns reduced it to its true value of $1.000$. The artifact is the contribution: controlled degradation claims are scoring-sensitive, and automated-judge pipelines without answer inspection or controls can ship dramatic false positives \cite{zheng2023judge}.
+  \item \textbf{C3 (bounded reframe).} On these controlled tasks, raw context volume did not by itself produce measurable degradation in the regime we swept; we therefore cannot attribute practitioner-felt degradation to token count alone, and the iterative task and error dynamics that long-horizon agent benchmarks report---compounding mistakes and tool-loop drift over many turns \cite{orlanski2026slopcodebench, deng2026evoclaw}---are a more plausible locus than static context length. We do \emph{not} claim that volume is never a cause: we cannot determine its contribution in real multi-turn agentic workflows, which our design does not test.
 \end{itemize}
 
-\paragraph{What we owe to prior work, and what this null adds.} We are explicit about our debts. That long-context quality degraded under fixed difficulty for the models of its day is Chroma's result \cite{hong2025contextrot}; that any such degradation is position-shaped is \emph{Lost in the Middle} \cite{liu2024lostmiddle}; that nominal context size overstates usable length, and that latent non-lexical retrieval is the harshest stressor, is RULER and NoLiMa \cite{hsieh2024ruler, modarressi2025nolima}; that agentic quality erodes monotonically over long \emph{iterative} horizons is SlopCodeBench and EvoClaw \cite{orlanski2026slopcodebench, deng2026evoclaw}; that capability is horizon-bounded is METR \cite{kwa2025metr}; that debugging effectiveness admits a half-life and a computable fresh-start point is the Debugging Decay Index \cite{adnan2025ddi}; that the judge belongs outside the agent is \emph{Search Discipline} \cite{srinivasan2026searchdiscipline}; that a cost framework should count the dollars behind a correct answer is Cost-of-Pass \cite{erol2025costofpass}; and that an intervention menu---compaction, memory paging, summarization, prompt compression, retrieval---is rich and available is a decade of context-management work \cite{packer2023memgpt, wang2023recursive, jiang2023llmlingua, jiang2024longllmlingua, lewis2020rag, chopra2026headroom, rajasekaran2025contextengineering, yan2025dontbuild}. What this paper adds is a contrarian, controlled correction: a cross-provider null showing that for current frontier models the volume-driven rot these tools were partly built to fight does not appear up to 150k tokens on clean lexical \emph{and} latent tasks; a demonstration that naive scoring can fabricate exactly the catastrophic rot the discourse expects; and a reframe that redirects the search for ``rot'' toward iterative task dynamics. The thermometers measured a real phenomenon; we show that on controlled tasks the frontier has, for now, outrun the volume reading of it.
+\paragraph{What we owe to prior work, and what this adds.} We are explicit about our debts. That long-context quality degraded under fixed difficulty for the models of its day is Chroma's result \cite{hong2025contextrot}; that any such degradation is position-shaped is \emph{Lost in the Middle} \cite{liu2024lostmiddle}; that nominal context size overstates usable length, and that latent non-lexical retrieval is the harshest stressor, is RULER and NoLiMa \cite{hsieh2024ruler, modarressi2025nolima}; that agentic quality erodes monotonically over long \emph{iterative} horizons is SlopCodeBench and EvoClaw \cite{orlanski2026slopcodebench, deng2026evoclaw}; that capability is horizon-bounded is METR \cite{kwa2025metr}; that debugging effectiveness admits a half-life and a computable fresh-start point is the Debugging Decay Index \cite{adnan2025ddi}; that the judge belongs outside the agent is \emph{Search Discipline} \cite{srinivasan2026searchdiscipline}; that a cost framework should count the dollars behind a correct answer is Cost-of-Pass \cite{erol2025costofpass}; and that an intervention menu---compaction, memory paging, summarization, prompt compression, retrieval---is rich and available is a decade of context-management work \cite{packer2023memgpt, wang2023recursive, jiang2023llmlingua, jiang2024longllmlingua, lewis2020rag, chopra2026headroom, rajasekaran2025contextengineering, yan2025dontbuild}. What this paper adds is a controlled measurement that, for the models tested and on clean lexical \emph{and} latent tasks up to $150{,}000$ tokens, does not reproduce the volume-driven degradation those interventions were partly built to fight; a demonstration that naive scoring can fabricate exactly the catastrophic collapse the discourse expects; and a conservative reframe that redirects the search for degradation toward iterative task dynamics without claiming volume is never a cause.
 
 %% ===== related =====
+
+
 \section{Related Work}
 \label{sec:related}
 
-We organize prior work around six themes that the Rot Tax draws on and
+We organize prior work around six themes this study builds on and
 extends: empirical evidence that long-context quality degrades; frameworks
 that model agentic capability as decay over a horizon; control loops that
 locate quality judgment relative to the producing agent; the economics of
@@ -92,7 +96,7 @@ while sweeping input length across 18 frontier models, showing degradation is
 universal, non-uniform (sensitive to needle--question similarity, distractors,
 and haystack structure), and present even on a trivial repeated-words task.
 These works establish \emph{that} and \emph{why} accumulating context taxes
-quality; Rot Tax adapts their controlled hold-difficulty/vary-length design
+quality; our design adapts their controlled hold-difficulty/vary-length design
 and extends it from raw token count to a cost-normalized decay signal.
 
 \subsection{Agent decay and half-life over a horizon}
@@ -120,10 +124,7 @@ prior solutions, showed code quality erodes monotonically (best $\sim$14.8\%
 checkpoint solve rate, $\sim$0.5\% by the final checkpoint; erosion and
 verbosity rising in the majority of trajectories) and---critically---that
 explicit quality guidance reduces the offset but \emph{not} the decay rate.
-Rot Tax inherits METR's horizon-bounded premise and the DDI half-life math,
-reframing the logistic drop as quality-per-dollar decay over accumulating
-context, and treats SlopCodeBench's ``guidance doesn't change the slope''
-result as direct motivation for an active reset rather than passive prompting.
+This study relates to METR's horizon-bounded premise and the DDI half-life formalism, but it measures within-context volume at fixed difficulty in a single pass rather than fitting decay across tasks or iterations; SlopCodeBench's finding that explicit guidance does not change the decay slope is part of what motivated us to test for a volume effect at all.
 
 \subsection{Control loops and oversight: where the judge sits}
 \label{sec:rw-control}
@@ -147,10 +148,7 @@ inversion'' (an aggregate metric ranking the wrong candidate first when
 validity lives in disaggregated structure) and moves the accept/reopen
 decision to an \emph{external} control loop that can demote a candidate the
 agent accepted and reopen a run the agent declared finished---two moves a
-one-time prompt cannot make. Rot Tax is the \emph{temporal} analogue: where
-Search Discipline audits quality across slices, Rot Tax watches
-quality-per-dollar decay across time/cost, relocating the corrective decision
-out of the agent into a live, external detector.
+one-time prompt cannot make. On the measurement side our study is a temporal counterpart: where Search Discipline audits quality across disaggregated slices, we ask whether quality decays along the within-context volume axis at all, and we report per-probe, per-length results rather than a single aggregate. We build no detector and propose no intervention; the disaggregated reporting is the part of that paradigm we adopt.
 
 \subsection{Agent economics}
 \label{sec:rw-economics}
@@ -212,35 +210,7 @@ per-item difficulty via IRT \cite{maiapolo2024tinybenchmarks}.
 \subsection{Positioning}
 \label{sec:rw-positioning}
 
-Rot Tax differs from its three closest predecessors along the axes of
-\emph{what} is measured, \emph{when}, and \emph{by whom}. Against Chroma's
-\emph{Context Rot} \cite{hong2025contextrot}, which offline-benchmarks
-raw-accuracy degradation versus input-token count across models, Rot Tax
-measures a \emph{cost-normalized} quantity---quality-per-dollar decay over
-accumulating agentic-coding context, where relevant facts rarely lexically
-match the query, the regime NoLiMa \cite{modarressi2025nolima} shows is far
-harsher---rather than token count alone, and does so live rather than as a
-static benchmark. Against METR's time-horizon work \cite{kwa2025metr}, which
-fits a cross-model logistic of success versus human task \emph{length}
-offline, Rot Tax reframes the decay as a quality-per-dollar half-life over
-spend/context within a single run and pairs the measurement with an actionable
-trigger; the half-life formalism it borrows is from the Debugging Decay Index
-\cite{adnan2025ddi}, not METR. Against \emph{Search Discipline}
-\cite{srinivasan2026searchdiscipline}, whose external control loop audits a
-candidate's \emph{disaggregated (spatial)} behavior and acts at accept/reopen
-boundaries, Rot Tax is the \emph{temporal} sibling: it watches the same
-``the agent is the last to notice its metric has gone wrong'' failure but along
-the time/cost axis, detecting \emph{when} rot begins and firing an
-optimally-timed reset/compaction rather than auditing slices at decision time.
-In short, prior art independently established that quality degrades
-\cite{hong2025contextrot,liu2024lostmiddle}, that capability is
-horizon-bounded \cite{kwa2025metr}, that decay admits a half-life and
-intervention point \cite{adnan2025ddi}, that judgment must be external
-\cite{srinivasan2026searchdiscipline}, and that interventions exist
-\cite{packer2023memgpt,wang2023recursive,jiang2023llmlingua,lewis2020rag,chopra2026headroom};
-To our knowledge, Rot Tax is the first to unify these into a single
-cost-normalized decay metric with a live detector and a timed trigger that
-decides when to invoke one of those known interventions.
+This study differs from its closest predecessors in what is measured and how. Against Chroma's \emph{Context Rot} \cite{hong2025contextrot}, which offline-benchmarks raw-accuracy degradation versus input length across models, we run a pre-registered single-pass factorial that crosses context volume with needle position, so a volume effect can be read separately from position \cite{liu2024lostmiddle} on tasks designed to remove lexical shortcuts \cite{modarressi2025nolima}; we report a bounded negative result rather than a degradation curve. Against METR's cross-task time-horizon analysis \cite{kwa2025metr} and the Debugging Decay Index's per-iteration half-life \cite{adnan2025ddi}, both fit offline, our axis is accumulated within-context volume at fixed difficulty in a single pass. \emph{Search Discipline} \cite{srinivasan2026searchdiscipline} relocates judgment outside the agent along a disaggregated, spatial axis; we share its concern that aggregate scores can hide structure---hence our per-probe, per-length reporting---but we make no claim to a deployed detector or timed intervention, since the manipulation check such machinery would require is negative here. Prior work established that quality can degrade with length \cite{hong2025contextrot,liu2024lostmiddle}, that capability is horizon-bounded \cite{kwa2025metr}, that decay admits a half-life \cite{adnan2025ddi}, that judgment can be externalized \cite{srinivasan2026searchdiscipline}, and that many context-management interventions exist \cite{packer2023memgpt,wang2023recursive,jiang2023llmlingua,lewis2020rag,chopra2026headroom}; our contribution is a controlled measurement showing that, for the models and probes tested up to 150k tokens, the volume-driven decay those tools target does not appear.
 
 %% ===== methods =====
 \section{Method: A Controlled Rot-Curve Harness}
@@ -516,7 +486,7 @@ needle mode & $\{\textsf{present},\,\textsf{absent (ctrl)},\,\textsf{counterfact
 content-seed & $R$ seeds (power-simulation determines $R$) \\
 substrate & $\geq 3$ synthetic repos (pilot); real-repo substrate (robustness) \\
 agent model & primary arms \{\textsf{gpt-5.5},\,\textsf{gpt-5.4},\,\textsf{gpt-5.4-mini}, \\
-            & \textsf{claude-sonnet-4-6}\}; \textsf{claude-haiku-4-5} as a spot-check (not a registered arm) \\
+            & \textsf{claude-sonnet-4-6}\} \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -572,14 +542,12 @@ on those arms we can exclude only large per-condition drops, not small ones.
 \begin{table}
   \centering
   \caption{EASY probes --- present-needle accuracy (overall, across
-  $T$/position). The \texttt{claude-haiku-4-5} row ($n=8$) is a spot-check,
-  not a registered arm.}
+  $T$/position).}
   \label{tab:easy}
   \begin{tabular}{lccccr}
     \toprule
     Model & A retrieval & B state/agg & C instruction & Overall & $n$ \\
     \midrule
-    \texttt{claude-haiku-4-5} & 1.000 & 1.000 & 1.000 & 1.000 & 8 \\
     \texttt{claude-sonnet-4-6} & 1.000 & 1.000 & 1.000 & 1.000 & 100 \\
     \texttt{gpt-5.4} & 1.000 & 1.000 & 1.000 & 1.000 & 600 \\
     \texttt{gpt-5.4-mini} & 1.000 & 1.000 & 1.000 & 1.000 & 5040 \\
@@ -624,7 +592,7 @@ on those arms we can exclude only large per-condition drops, not small ones.
 
 \paragraph{Controls.}
 The controls indicate the probes are genuine and not trivially leaked. The
-no-needle (absent) control sat at accuracy \textbf{0.000} over \textbf{3{,}084}
+no-needle (absent) control sat at accuracy \textbf{0.000} over \textbf{3{,}230}
 trials, matching the expected chance level ($\approx 0$) for nonce retrieval:
 the probe requires the in-context information and is not answerable from filler
 or parametric memory. The counterfactual-needle control reached accuracy
@@ -676,6 +644,26 @@ tested, at coarse per-condition precision rather than as a tightly-powered
 result.
 
 %% ===== discussion =====
+\subsection{Statistical precision and power}
+\label{sec:results:precision}
+A negative result is only as strong as its precision, so we report what the data can and
+cannot exclude rather than aggregate accuracy alone, attaching exact one-sided $95\%$
+Clopper--Pearson upper bounds to failure rates and the minimum per-condition accuracy drop
+detectable at $80\%$ power, following \citet{miller2024errorbars}. Precision is deliberately
+uneven across the design. Per condition (model $\times$ probe set $\times$ probe $\times$
+length; $120$ present-needle conditions), cell size ranges from $n=2$ to $n=432$ (median $24$).
+The depth model \texttt{gpt-5.4-mini} contributes $6{,}030$ pooled present-needle trials, with
+best-powered cells giving a one-sided $95\%$ upper bound on the per-condition failure rate as
+low as $0.0085$ and a minimum detectable drop near $0.4\%$. The frontier-tier arms are far
+coarser per condition: \texttt{gpt-5.5} ($720$ pooled present-needle trials), \texttt{gpt-5.4}
+($600$), and \texttt{claude-sonnet-4-6} ($170$) include cells as small as $n=2$, where the
+upper bound on the failure rate is $0.84$ and only drops larger than about $0.55$ are
+detectable at $80\%$ power; the median per-condition upper bound is $0.149$ and the median
+detectable drop is $0.065$. Pooled over the registered grid ($7{,}330$ present-needle trials,
+$48$ failures), the one-sided $95\%$ upper bound on the failure rate is $0.87\%$. We therefore
+read the depth-model result as a tightly-powered null and the frontier-tier results as a
+cross-provider breadth check that excludes only large per-condition degradations, not small ones.
+
 \section{Discussion}
 \label{sec:discussion}
 
@@ -687,8 +675,7 @@ arm---gpt-5.5, gpt-5.4, gpt-5.4-mini, and claude-sonnet-4-6---on retrieval,
 state-tracking, and instruction-adherence, flat across context length from $5$k to
 $150$k tokens and flat across \texttt{front}/\texttt{mid}/\texttt{end} needle
 positions (Section~\ref{sec:results}). The honest reading is the contrarian one: for
-current frontier models, raw context \emph{volume} is not, by itself, the cause of
-the degradation practitioners report in long coding sessions. Because C0 fails at
+current frontier models, raw context \emph{volume} did not, by itself, produce degradation on these controlled probes; we cannot determine its contribution to the degradation practitioners report in long coding sessions. Because C0 fails at
 \texttt{needle\_position}\,$=$\,\texttt{end}---where the needle abuts the probe and
 needle-to-probe distance is held at approximately zero for every $T$---the drop we
 were prepared to attribute to accumulation simply does not appear, and it cannot be
@@ -706,7 +693,7 @@ claude-sonnet-4-6. Instruction-adherence under a \emph{conflicting authority} (t
 probe variant in which the context actively argues that editing protected files is
 acceptable) is also held at $1.000$ for all three. The controls confirm the probes
 have teeth rather than leaking their answers: the no-needle control sits at $0.000$
-over $3084$ trials (it cannot be answered from filler or parametric memory), and the
+over $3{,}230$ trials (it cannot be answered from filler or parametric memory), and the
 counterfactual-needle control is $1.000$ over $2160$ trials (models report the
 in-context value, not a memorized one). A null that survives the NoLiMa manipulation
 and validating controls is a substantive boundary statement, not an under-powered
@@ -755,10 +742,8 @@ genuinely ambiguous or underspecified compositions remain untested and are the n
 next stressor. Fourth, probe C is
 re-scored from logged answers at analysis time rather than judged live, which is a
 strength for auditability but means the reported instruction-adherence figure
-reflects the validated detector rather than any collection-time scorer. Fifth, the
-\texttt{claude-haiku-4-5} row is an $n=8$ spot-check, not a registered arm, and
-should not be read as an equivalence claim for that model. Finally, the scope of the
-equivalence statement is exactly what we measured: $12582$ total trials, $7338$
+reflects the validated detector rather than any collection-time scorer. Finally, the scope of the
+equivalence statement is exactly what we measured: $12{,}570$ total trials, $7{,}330$
 present-needle, $48$ present-needle failures---a tight bound on volume-driven rot for
 the models, probes, and lengths studied, and nothing wider.
 
@@ -766,11 +751,7 @@ the models, probes, and lengths studied, and nothing wider.
 \section{Conclusion}
 \label{sec:conclusion}
 
-We set out to build a thermostat for context rot---a live detector and a timed
-intervention for the volume-driven decay that the long-context literature and
-practitioner folklore both predict---and found that, for current frontier models on
-controlled tasks up to 150k tokens, the thermostat is unnecessary because the rot
-tax is near zero. Across the four primary arms (\texttt{gpt-5.5}, \texttt{gpt-5.4},
+We set out to detect, and then intervene on, the volume-driven decay that the long-context literature and practitioner folklore both predict, and found, for the four models tested on our controlled probes up to 150k tokens, no measurable length-driven degradation to act on. Across the four primary arms (\texttt{gpt-5.5}, \texttt{gpt-5.4},
 \texttt{gpt-5.4-mini}, and \texttt{claude-sonnet-4-6}), present-needle accuracy holds
 flat across context length and needle position on lexical and latent probes alike;
 because the pre-registered manipulation check (C0) is negative, the live-detection
