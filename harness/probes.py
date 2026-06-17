@@ -18,8 +18,13 @@ class Probe:
     text: str        # constant-difficulty question
 
 
-def make_probes(sub: Substrate, hard: bool = False) -> List[Probe]:
+def make_probes(sub: Substrate, hard: bool = False, deep: bool = False) -> List[Probe]:
     tgt = sub.probe_a_target
+    if deep:  # A3 only: 3-hop latent retrieval through a chain, with a competing decoy chain
+        return [Probe("A_retrieval", "A",
+                "Follow the full routing chain for the main datastore (NOT the cache) described "
+                "earlier in this session. What sentinel token does the primary store ultimately "
+                "resolve to? Answer with only the token (the NX... string).")]
     if hard:
         return [
             # A2: latent 2-hop, low lexical overlap with the needle ('primary store' vs

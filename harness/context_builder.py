@@ -71,6 +71,10 @@ class Substrate:
     hop_nonce: str = ""            # A2: the latent answer reached via the alias hop
     refactor_count: int = 2        # B2: gold count (constant)
     edit_types: List[str] = None   # B2: type per edit_log entry
+    # --- deep-probe fields (A3: 3-hop chain + a decoy chain = NoLiMa interference) ---
+    alias2: str = "beta"           # second hop in the datastore routing chain
+    decoy_alias: str = "omega"     # the decoy (cache) chain's intermediate
+    decoy_nonce: str = ""          # the WRONG token the decoy chain resolves to
 
 
 def generate_substrate(item_id: int, content_seed: int, n_files: int, n_funcs: int) -> Substrate:
@@ -92,19 +96,28 @@ def generate_substrate(item_id: int, content_seed: int, n_files: int, n_funcs: i
     nst = _nonce(content_seed, item_id, "cf1")
     edit_files = rng.sample(list(files.keys()), k=min(K_EDIT_LOG, len(files)))
     edit_log = [(f, f"{rng.choice(VERBS)} {files[f][0].name}") for f in edit_files]
-    alias = rng.choice(ALIASES)
+    alias, alias2, decoy_alias = rng.sample(ALIASES, 3)
     hop_nonce = _nonce(content_seed, item_id, "hop")
+    decoy_nonce = _nonce(content_seed, item_id, "decoy")
     edit_types = list(EDIT_TYPES)  # fixed -> refactor_count = 2
     return Substrate(item_id, files, tgt, np_, ncf, nst, edit_log,
                      alias=alias, hop_nonce=hop_nonce,
-                     refactor_count=edit_types.count("refactor"), edit_types=edit_types)
+                     refactor_count=edit_types.count("refactor"), edit_types=edit_types,
+                     alias2=alias2, decoy_alias=decoy_alias, decoy_nonce=decoy_nonce)
 
 
 # ---------------------------------------------------------------------------
 # Needle: the fixed-difficulty block carrying exactly what a probe needs.
 # ---------------------------------------------------------------------------
-def build_hard_needle(sub: Substrate, probe_kind: str, needle_mode: str) -> str:
-    """Harder, NoLiMa-style needles: latent 2-hop / aggregation / conflicting authority."""
+def build_hard_needle(sub: Substrate, probe_kind: str, needle_mode: str, deep: bool = False) -> str:
+    """Harder, NoLiMa-style needles: latent 2-hop / aggregation / conflicting authority.
+    deep=True (Probe A only): a 3-hop routing chain PLUS a competing decoy chain (interference)."""
+    if probe_kind == "A" and deep:  # A3: 3-hop + decoy chain (datastore vs cache)
+        return (f"## Internal routing map\nThe main datastore is routed through `{sub.alias}`, "
+                f"which delegates to `{sub.alias2}`; component `{sub.alias2}` exposes a sentinel "
+                f"constant whose value is `{sub.hop_nonce}`.\nSeparately (unrelated), the cache "
+                f"layer is routed through `{sub.decoy_alias}`, whose sentinel value is "
+                f"`{sub.decoy_nonce}`.\n")
     if probe_kind == "A":  # A2: latent 2-hop, non-lexical with the question
         if needle_mode == "counterfactual":
             return (f"## Internal alias map\nThe main datastore was initially wired to a "
@@ -125,9 +138,10 @@ def build_hard_needle(sub: Substrate, probe_kind: str, needle_mode: str) -> str:
     return ""
 
 
-def build_needle(sub: Substrate, probe_kind: str, needle_mode: str, hard: bool = False) -> str:
+def build_needle(sub: Substrate, probe_kind: str, needle_mode: str, hard: bool = False,
+                 deep: bool = False) -> str:
     if hard:
-        return build_hard_needle(sub, probe_kind, needle_mode)
+        return build_hard_needle(sub, probe_kind, needle_mode, deep)
     tgt = sub.probe_a_target
     if probe_kind == "A":
         if needle_mode == "counterfactual":
@@ -236,8 +250,8 @@ class Trial:
 
 def assemble_trial(sub: Substrate, probe_kind: str, probe_text: str, target_tokens: int,
                    *, position: str, composition: str, needle_mode: str,
-                   content_seed: int, hard: bool = False) -> Trial:
-    needle = "" if needle_mode == "absent" else build_needle(sub, probe_kind, needle_mode, hard)
+                   content_seed: int, hard: bool = False, deep: bool = False) -> Trial:
+    needle = "" if needle_mode == "absent" else build_needle(sub, probe_kind, needle_mode, hard, deep)
     structured, neutral = build_filler(sub, probe_kind, target_tokens, composition, content_seed)
     body = structured + neutral
     rng = random.Random((content_seed * 999331) ^ sub.item_id)
