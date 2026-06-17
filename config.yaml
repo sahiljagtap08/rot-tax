@@ -3,24 +3,26 @@
 
 run:
   seed: 42
-  budget_usd_ceiling: 25.0          # hard ABORT if exceeded
-  max_parallel_sessions: 4
-  provider: mock                    # mock | anthropic | openai  (mock needs no key, no money)
+  budget_usd_ceiling: 200.0         # hard ABORT if exceeded (robustness pilot)
+  max_parallel_sessions: 6
+  provider: openai                  # mock | anthropic | openai  (mock needs no key, no money)
 
 models:
   # model under study (the "agent" whose context we rot). Pin a DATED id for real runs.
-  agent_model: claude-haiku-4-5-20251001
+  agent_model: gpt-4o-mini          # cheap workhorse; gpt-4o is the confirmation subset
   # v0.2: Probe A is mechanical (nonce exact-match), so NO scorer model is needed.
 
 experiment:
-  probe_milestones_tokens: [5000, 20000, 50000, 100000, 150000]
+  # Capped at 120k: GPT-4o / GPT-4o-mini have a 128k context limit. Claude (200k+) can
+  # extend to 150k via --levels for a cross-provider robustness arm.
+  probe_milestones_tokens: [5000, 20000, 50000, 90000, 120000]
   probe_types: [A_retrieval, B_state, C_instruction]
   needle_positions: [front, mid, end]   # 'end' (distance~0) is the identification arm
   needle_modes: [present, absent, counterfactual]   # absent/counterfactual = controls (Probe A)
   compositions: [diverse, redundant, distracting]   # diverse is primary
-  repetitions: 32                   # PLACEHOLDER from power_sim (strong-rot, ICC=0.1). Re-run
-                                    # python -m harness.power_sim and set per your assumed effect.
-  num_substrate_items: 10           # distinct synthetic "repos" (>=3 required; 10 for the pilot)
+  repetitions: 12                   # per-cell seeds for the cheap workhorse grid (gpt-4o-mini).
+                                    # Re-run python -m harness.power_sim to size for your effect.
+  num_substrate_items: 4            # distinct synthetic "repos" (>=3 required; scriptable up)
 
 substrate:
   kind: synthetic                   # synthetic (controlled) | repo (real, future)

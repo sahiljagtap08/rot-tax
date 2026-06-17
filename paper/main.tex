@@ -1,0 +1,936 @@
+\documentclass[11pt]{article}
+
+% --- Packages ---
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{xparse}
+\usepackage[numbers]{natbib}
+\usepackage{hyperref}
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue,
+  citecolor=blue,
+  urlcolor=blue
+}
+
+% --- Result placeholder macro -------------------------------------------------
+% Renders conspicuously so an un-substituted placeholder cannot silently reach
+% a compiled PDF. Uses xparse signature `g` (optional braced group) so BOTH
+% call forms compile: a no-argument "\resultplaceholder." and a tagged
+% "\resultplaceholder{short tag}". The intervention section file uses
+% \providecommand, which is a no-op here since this definition wins.
+\NewDocumentCommand{\resultplaceholder}{g}{%
+  \IfNoValueTF{#1}%
+    {\textbf{[RESULTS PLACEHOLDER]}}%
+    {\textbf{[\,RESULT: #1 --- pending registered run; assembler to fill\,]}}%
+}
+
+% --- Title / author -----------------------------------------------------------
+\title{The Rot Tax: Live Detection and Timed Intervention for Context Decay in Coding Agents}
+\author{Sahil Jagtap \\ George Mason University \\ sjagtap2@gmu.edu \\ jagtap.tech}
+\date{}
+
+\begin{document}
+\maketitle
+
+%% ===== abstract =====
+\begin{abstract}
+Coding agents accumulate context as they work, and a growing body of evidence shows that model quality degrades as that context grows, well before nominal window limits are reached~\cite{liu2024lostmiddle,hsieh2024ruler,modarressi2025nolima,hong2025contextrot}. We call this phenomenon, in the agentic-coding setting, the \emph{rot tax}: the quality a session forfeits as filler-laden context piles up. That agentic context rot \emph{exists at all} is not our claim---Chroma's \emph{Context Rot}~\cite{hong2025contextrot} owns it---and we treat ``rot exists'' strictly as a manipulation check that gates nothing on its own, established here only by confirming the effect transfers to agentic filler under a needle-position $\times$ volume factorial that holds needle--probe distance fixed and so separates volume-driven rot from the \emph{lost-in-the-middle} position effect~\cite{liu2024lostmiddle}.
+
+Our two primary contributions lie elsewhere. First, we ask whether latent rot is \emph{predictable live from cheap signals beyond what context length alone predicts}: a candidate signal must add incremental skill over a $\log(T)$-only baseline on a held-out composition/model split, the ``thermostat'' claim that, if length is all you need, fails honestly. Second, we ask whether intervention \emph{timing} matters \emph{separably from intervention mechanism}: a dedicated fork-at-peak versus fork-at-random arm isolates the value of acting at a detected peak from the value of preserving state, a separation prior static-schedule interventions~\cite{packer2023memgpt,wang2023recursive,jiang2023llmlingua,lewis2020rag} do not make. A secondary contribution reports per-probe-type half-lives---retrieval, state-tracking, and instruction-adherence rot decaying at distinct rates~\cite{adnan2025ddi}---rather than a single aggregate that can hide an inversion~\cite{srinivasan2026searchdiscipline}. The phenomenon is positioned as the \emph{temporal} sibling of disaggregated-quality auditing~\cite{srinivasan2026searchdiscipline} and is measured as a provider-agnostic, cost-normalized quantity rather than raw token count~\cite{kwa2025metr,erol2025costofpass}. All hypotheses, conditions, signals, statistical models, and GO/WEAK/NULL decision rules are \textbf{pre-registered}; we report no results in this document. Findings, including publishable nulls, will be reported from a public, hash-pinned harness.
+\end{abstract}
+
+%% ===== intro =====
+\section{Introduction}
+\label{sec:intro}
+
+A coding agent that begins a session sharp does not stay sharp. As a session accumulates context---tool outputs, file rereads, diffs, dead ends, and its own prior reasoning---its behavior drifts: it rereads files it already read, re-edits code it already fixed, reintroduces regressions it already resolved, and quietly stops obeying instructions it acknowledged a thousand tokens ago. This degradation is not a window-overflow artifact that appears at the nominal context limit; it sets in well before, and it compounds. Controlled long-context studies have shown that holding task difficulty fixed while growing input length is enough to drag quality down across every frontier model tested \cite{hong2025contextrot}, that the effect is sharply position-dependent rather than uniform \cite{liu2024lostmiddle}, that it survives once lexical shortcuts between query and evidence are removed \cite{modarressi2025nolima}, and that nominal context size badly overstates the length at which a model remains usable \cite{hsieh2024ruler}. In the agentic regime the picture is worse: as agents extend their own prior solutions or evolve a codebase over many turns, quality erodes monotonically and explicit quality guidance lowers the offset without bending the decay rate \cite{orlanski2026slopcodebench, deng2026evoclaw}.
+
+The dominant way the field accounts for this is the wrong currency. Long sessions are reasoned about in cost-per-token: a longer context costs more because there are more tokens to bill, prompt caching makes re-reads cheap-per-token \cite{anthropic2026promptcaching}, and the engineering response is to compress or evict tokens to keep the per-token bill down \cite{jiang2023llmlingua, jiang2024longllmlingua, packer2023memgpt, wang2023recursive}. But per-token price is a misframe twice over. First, listed per-token price is an unreliable proxy for true cost: realized cost is dominated by concurrency and serving conditions, and price-based comparisons routinely invert once those are accounted for \cite{patil2026beyondtoken, chen2026pricereversal, erdil2025inference}. Second, and more fundamentally, cost-per-token holds quality fixed and asks what tokens cost---exactly backwards for an agent whose quality is itself decaying as tokens accumulate. The quantity that matters is not what a token costs but what a token \emph{buys}, and how fast what it buys decays. Cost-of-pass formalizes the dollars behind one correct answer \cite{erol2025costofpass}; we push the same instinct down the length axis of a single run.
+
+We call this decaying quantity the \emph{rot tax}: the excess context an agent must accumulate to hold a fixed level of task quality as a session lengthens, relative to a governed run that resets or forks before it rots. The rot tax is defined primarily as a dimensionless, provider-agnostic quantity---excess accumulated tokens at fixed quality, or equivalently the quality deficit measured in accuracy-token units between a naive long run and a governed counterfactual---so that it is reproducible and directly comparable to horizon-style measurements \cite{kwa2025metr}; a dated, sensitivity-banded dollar figure is a strictly secondary reading, never the headline. The tax is charged only against the governed-versus-naive counterfactual: a run that never rots owes nothing, which is the only coherent way to bill degradation.
+
+The deeper gap is not measurement, it is action. Every result above is a \emph{thermometer}: it reads degradation offline, after the fact, on a static benchmark, across models or across slices. None is a \emph{thermostat}: none watches a single live run, decides \emph{when} that particular run has begun to rot, and acts on it in time. The half-life formalism that describes iterative-debugging decay supplies the math for a fresh-start intervention but is fit and applied offline \cite{adnan2025ddi}. Horizon measurement bounds capability across the population of tasks but says nothing within one run \cite{kwa2025metr}. The interventions themselves---compaction, summarization, paging, retrieval, tool-output compression---already exist, but they fire on static schedules or always-on heuristics rather than on detected rot \cite{packer2023memgpt, wang2023recursive, lewis2020rag, chopra2026headroom, rajasekaran2025contextengineering, yan2025dontbuild}. The structurally closest prior work moves the quality judge \emph{outside} the agent and lets it act at decision boundaries, but along the spatial axis of disaggregated candidate structure \cite{srinivasan2026searchdiscipline}; the temporal sibling---an external detector that watches quality-per-dollar decay over the life of a run and fires an optimally-timed reset---does not yet exist. Closing the thermostat gap requires three things prior work does not jointly supply: that latent rot be \emph{predictable live} from cheap signals, that intervention \emph{timing} be shown to matter independently of intervention \emph{mechanism}, and that the whole apparatus be measured in a currency that does not hold quality fixed.
+
+\paragraph{Contributions.} We pre-register and pursue four claims, sharply tiered by what each is allowed to license:
+\begin{itemize}
+  \item \textbf{C0 (manipulation check, not a contribution).} Agentic-coding context rot exists: accuracy on fixed-difficulty probes falls as session context grows, even with needle-to-probe distance held constant so the drop cannot be explained by position or lost-in-the-middle effects \cite{liu2024lostmiddle}. Chroma established this for generic haystacks \cite{hong2025contextrot}; we only confirm it transfers to agentic filler. It gates nothing on its own.
+  \item \textbf{C1 (primary, the spine).} Latent rot is predictable \emph{live} from cheap behavioral signals \emph{beyond what context length alone predicts}. A signal qualifies only if it adds out-of-sample skill over a $\log(T)$-only baseline on a held-out split. This is the thermostat claim; if nothing beats $\log(T)$, we report the null---length is all you need.
+  \item \textbf{C2 (primary).} Intervention \emph{timing} matters and is separable from intervention \emph{mechanism}. Forking at the detected rot peak beats forking at a random point with the same fork mechanism held constant, isolating timing from the orthogonal question of whether preserving state beats summarizing it.
+  \item \textbf{C3 (secondary).} The probe types have different half-lives: retrieval, state-tracking, and instruction-adherence rot at different rates. We refuse to report only the aggregate, since a scalar can hide an inversion \cite{srinivasan2026searchdiscipline}.
+\end{itemize}
+
+\paragraph{What is already established, and what is genuinely new.} We are explicit about our debts. That long-context quality degrades under fixed difficulty is Chroma's result, not ours \cite{hong2025contextrot}; that the degradation is position-shaped is \emph{Lost in the Middle} \cite{liu2024lostmiddle}; that nominal context size overstates usable length is RULER and NoLiMa \cite{hsieh2024ruler, modarressi2025nolima}; that agentic quality erodes monotonically over long horizons is SlopCodeBench and EvoClaw \cite{orlanski2026slopcodebench, deng2026evoclaw}; that capability is horizon-bounded is METR \cite{kwa2025metr}; that debugging effectiveness admits a half-life and a computable fresh-start point is the Debugging Decay Index \cite{adnan2025ddi}; that the judge belongs outside the agent is \emph{Search Discipline} \cite{srinivasan2026searchdiscipline}; and that the intervention menu---compaction, memory paging, summarization, prompt compression, retrieval---is rich and available is a decade of context-management work \cite{packer2023memgpt, wang2023recursive, jiang2023llmlingua, jiang2024longllmlingua, lewis2020rag, chopra2026headroom}. Our manipulation check (C0) is deliberately not a contribution; it merely buys the right to proceed. What is new is the synthesis these works leave on the table: a cost-normalized decay quantity (the rot tax) joined to a \emph{live} detector validated against the only honest baseline, context length itself (C1), and a timed trigger designed to isolate whether its value comes from \emph{when} it fires rather than only from the fact that resetting helps (C2). The thermometers are excellent. We are building the thermostat.
+
+%% ===== related =====
+\section{Related Work}
+\label{sec:related}
+
+We organize prior work around six themes that the Rot Tax draws on and
+extends: empirical evidence that long-context quality degrades; frameworks
+that model agentic capability as decay over a horizon; control loops that
+locate quality judgment relative to the producing agent; the economics of
+agent operation; methods for managing context growth; and the statistical
+methodology our evaluation design inherits.
+
+\subsection{Long-context degradation}
+\label{sec:rw-degradation}
+
+A growing body of work shows that model quality degrades as context grows,
+well before nominal window limits. The needle-in-a-haystack protocol
+\cite{kamradt2023niah} introduced the now-standard pressure test of inserting
+a fact at varying depths in a long document and probing recall across lengths
+and positions; it is methodological tooling rather than a results paper, but
+every later study builds on or critiques it. \emph{Lost in the Middle}
+\cite{liu2024lostmiddle} gave the first rigorous, quantified result: a
+U-shaped position curve in which models use information at the start and end
+of context but degrade sharply in the middle, with GPT-3.5-Turbo dropping more
+than 20 points and, in the worst case (20--30 documents, answer in the
+middle), falling \emph{below} the closed-book baseline of 56.1\%. RULER
+\cite{hsieh2024ruler} argued that vanilla NIAH measures only superficial
+retrieval and introduced a synthetic benchmark with independently configurable
+length and complexity (multi-key/value/query retrieval, multi-hop tracing,
+aggregation), finding that although all 17 evaluated models claim
+$\geq$32K context, only about half remain satisfactory at 32K. NoLiMa
+\cite{modarressi2025nolima} removed the lexical-overlap confound so that
+needle and query share minimal surface matches: across 12 models claiming
+$\geq$128K context, 10 fell below 50\% of their short-context baseline at 32K,
+GPT-4o dropped from 99.3\% to 69.7\% (effective length $\sim$8K), and several
+models had effective lengths of only 2K. Most directly on theme, Chroma's
+\emph{Context Rot} report \cite{hong2025contextrot} held task complexity fixed
+while sweeping input length across 18 frontier models, showing degradation is
+universal, non-uniform (sensitive to needle--question similarity, distractors,
+and haystack structure), and present even on a trivial repeated-words task.
+These works establish \emph{that} and \emph{why} accumulating context taxes
+quality; Rot Tax adapts their controlled hold-difficulty/vary-length design
+and extends it from raw token count to a cost-normalized decay signal.
+
+\subsection{Agent decay and half-life over a horizon}
+\label{sec:rw-decay}
+
+A second line of work models agentic capability as bounded and decaying.
+METR's time-horizon study \cite{kwa2025metr} defined the 50\% time
+horizon---the human task length at which a model succeeds half the
+time---fitting per-model success with a logistic curve and finding the
+frontier horizon has doubled roughly every seven months since 2019
+(o3 $\approx$ 110 minutes). We note for integrity that METR does not use the
+term ``half-life'' or model reliability as exponential decay; that framing
+comes from the Debugging Decay Index \cite{adnan2025ddi}, which models
+iterative debugging effectiveness as $E(t) = E_0\,e^{-\lambda t}$ with
+half-life $t_{1/2} = \ln(2)/\lambda$ and a generalized intervention window
+$t_\theta = \ln\!\big(100/(100-\theta)\big)/\lambda$, showing that a strategic
+``fresh start'' (clearing history at the computed point) breaks the decay
+curve (e.g., deepseek-coder-v2:16b 84.1\% $\to$ 92.1\%). On long-horizon
+coding specifically, EvoClaw \cite{deng2026evoclaw} evaluated 12 frontier
+models across 4 frameworks on continuous software evolution and found overall
+scores collapse from $>$80\% on isolated tasks to at most 38\% in continuous
+settings as regressions and technical debt compound. SlopCodeBench
+\cite{orlanski2026slopcodebench}, in which agents repeatedly extend their own
+prior solutions, showed code quality erodes monotonically (best $\sim$14.8\%
+checkpoint solve rate, $\sim$0.5\% by the final checkpoint; erosion and
+verbosity rising in the majority of trajectories) and---critically---that
+explicit quality guidance reduces the offset but \emph{not} the decay rate.
+Rot Tax inherits METR's horizon-bounded premise and the DDI half-life math,
+reframing the logistic drop as quality-per-dollar decay over accumulating
+context, and treats SlopCodeBench's ``guidance doesn't change the slope''
+result as direct motivation for an active reset rather than passive prompting.
+
+\subsection{Control loops and oversight: where the judge sits}
+\label{sec:rw-control}
+
+A third theme concerns \emph{where} quality judgment sits relative to the
+agent and \emph{when} it can act. In-agent self-correction methods keep the
+judge inside the producing model: Reflexion \cite{shinn2023reflexion} reflects
+on feedback and stores it in episodic memory across trials (91\% pass@1 on
+HumanEval vs.\ 80\% for GPT-4), and Self-Refine \cite{madaan2023selfrefine}
+has one LLM generate, critique, and revise iteratively ($\sim$20\% average
+gain across seven tasks). Both inherit the agent's blind spots and cannot act
+after the agent stops. Orthogonal primitives sharpen the signal:
+LLM-as-a-judge \cite{zheng2023judge} supplies a separate evaluator reaching
+$>$80\% agreement with humans but carrying self-enhancement bias, and process
+supervision \cite{lightman2023verify} places the judging signal at every
+intermediate step rather than only the final outcome---the temporal
+granularity that makes mid-trajectory intervention possible. The closest
+structural sibling is \emph{Search Discipline for Long-Horizon Research Agents}
+\cite{srinivasan2026searchdiscipline}, which names ``aggregate-verifier
+inversion'' (an aggregate metric ranking the wrong candidate first when
+validity lives in disaggregated structure) and moves the accept/reopen
+decision to an \emph{external} control loop that can demote a candidate the
+agent accepted and reopen a run the agent declared finished---two moves a
+one-time prompt cannot make. Rot Tax is the \emph{temporal} analogue: where
+Search Discipline audits quality across slices, Rot Tax watches
+quality-per-dollar decay across time/cost, relocating the corrective decision
+out of the agent into a live, external detector.
+
+\subsection{Agent economics}
+\label{sec:rw-economics}
+
+Prior work also puts dollars on agent operation. Cost frameworks include
+FrugalGPT \cite{chen2023frugalgpt}, which cuts up to 98\% of cost via cascades
+at matched accuracy, and Cost-of-Pass \cite{erol2025costofpass}, which
+formalizes the expected monetary cost of a correct solution---the canonical
+quality-per-dollar metric, observed to roughly halve every few months across
+model generations. Inference and serving economics explain why long context is
+expensive: cost-per-token/speed Pareto frontiers under hardware limits
+\cite{erdil2025inference}, concurrency-dominated real cost spanning
+\$0.21--\$15.25 per 1M output tokens on identical H100s
+\cite{patil2026beyondtoken}, and the finding that listed price is an
+unreliable cost proxy (32\% of comparisons reverse, up to 28$\times$)
+\cite{chen2026pricereversal}. The KV-cache lineage---PagedAttention/vLLM
+\cite{kwon2023pagedattention}, up to $\sim$24$\times$ throughput---and
+commercial prompt caching \cite{anthropic2026promptcaching}, with cache reads
+at 0.1$\times$ input price, make re-reading accumulated context
+cheap-per-token yet still the dominant cost driver as loops grow. Budget-aware
+agents are the nearest neighbors: BAGEN \cite{lin2026bagen} shows agents are
+weakly budget-aware (capability$\leftrightarrow$awareness $r = 0.35$) yet
+timed early-stopping recovers 28--64\% of tokens on failed trajectories; BATS
+\cite{liu2025bats} and BudgetThinker \cite{wen2025budgetthinker} inject live
+budget signals to push the cost-performance frontier; BudgetMLAgent
+\cite{gandhi2024budgetmlagent} cuts cost 94.2\% via tiered routing; and Token
+Economics \cite{chen2026tokeneconomics} frames tokens as a unit of account
+with super-linear coordination cost.
+
+\subsection{Context management}
+\label{sec:rw-context-mgmt}
+
+A final body of work offers an intervention menu for context growth. MemGPT
+\cite{packer2023memgpt} pages memory OS-style; recursive summarization
+\cite{wang2023recursive}, Anthropic's context-engineering guidance
+\cite{rajasekaran2025contextengineering}, and Cognition's compaction notes
+\cite{yan2025dontbuild} compress history; LLMLingua \cite{jiang2023llmlingua}
+and LongLLMLingua \cite{jiang2024longllmlingua} compress tokens (up to
+20$\times$; +21.4\% with $\sim$4$\times$ fewer tokens, 94\% cost reduction);
+RAG \cite{lewis2020rag} keeps knowledge out of context entirely; and Headroom
+\cite{chopra2026headroom} compresses tool outputs by 60--95\% in production.
+Crucially, all of these apply interventions on static schedules or always-on
+heuristics; none frames degradation as a quality-per-dollar tax, measures its
+marginal dollar cost, or provides live detection of \emph{when} rot has begun.
+
+\subsection{Evaluation methodology}
+\label{sec:rw-methodology}
+
+Our statistical design follows \emph{Adding Error Bars to Evals}
+\cite{miller2024errorbars}---clustered and paired-difference standard errors,
+variance reduction by resampling, and power analysis---and uses mixed-effects
+logistic regression on per-task pass/fail with random intercepts for item, as
+exemplified by EWoK \cite{ivanova2024ewok}, so that the context-length
+coefficient is estimated net of item difficulty. We report cross-seed variance
+per \cite{madaan2024variance} and \cite{hochlehnert2025soberlook}, which show
+single-seed small-set evals can swing up to $\sim$15\%, and optionally estimate
+per-item difficulty via IRT \cite{maiapolo2024tinybenchmarks}.
+
+\subsection{Positioning}
+\label{sec:rw-positioning}
+
+Rot Tax differs from its three closest predecessors along the axes of
+\emph{what} is measured, \emph{when}, and \emph{by whom}. Against Chroma's
+\emph{Context Rot} \cite{hong2025contextrot}, which offline-benchmarks
+raw-accuracy degradation versus input-token count across models, Rot Tax
+measures a \emph{cost-normalized} quantity---quality-per-dollar decay over
+accumulating agentic-coding context, where relevant facts rarely lexically
+match the query, the regime NoLiMa \cite{modarressi2025nolima} shows is far
+harsher---rather than token count alone, and does so live rather than as a
+static benchmark. Against METR's time-horizon work \cite{kwa2025metr}, which
+fits a cross-model logistic of success versus human task \emph{length}
+offline, Rot Tax reframes the decay as a quality-per-dollar half-life over
+spend/context within a single run and pairs the measurement with an actionable
+trigger; the half-life formalism it borrows is from the Debugging Decay Index
+\cite{adnan2025ddi}, not METR. Against \emph{Search Discipline}
+\cite{srinivasan2026searchdiscipline}, whose external control loop audits a
+candidate's \emph{disaggregated (spatial)} behavior and acts at accept/reopen
+boundaries, Rot Tax is the \emph{temporal} sibling: it watches the same
+``the agent is the last to notice its metric has gone wrong'' failure but along
+the time/cost axis, detecting \emph{when} rot begins and firing an
+optimally-timed reset/compaction rather than auditing slices at decision time.
+In short, prior art independently established that quality degrades
+\cite{hong2025contextrot,liu2024lostmiddle}, that capability is
+horizon-bounded \cite{kwa2025metr}, that decay admits a half-life and
+intervention point \cite{adnan2025ddi}, that judgment must be external
+\cite{srinivasan2026searchdiscipline}, and that interventions exist
+\cite{packer2023memgpt,wang2023recursive,jiang2023llmlingua,lewis2020rag,chopra2026headroom};
+To our knowledge, Rot Tax is the first to unify these into a single
+cost-normalized decay metric with a live detector and a timed trigger that
+decides when to invoke one of those known interventions.
+
+%% ===== methods =====
+\section{Method: A Controlled Rot-Curve Harness}
+\label{sec:method}
+
+We measure how agentic-coding performance degrades as session context accumulates, under
+conditions strict enough to attribute any degradation to volume rather than to confounds that
+prior long-context work has shown can mimic it. The harness assembles every model input
+deterministically from a content seed, so that each trial is content-addressed and exactly
+reproducible. This section describes the synthetic substrate, the identification design (the
+needle-position $\times$ volume factorial), the two-stream filler that enforces difficulty
+invariance, the three mechanical probes, and the needle-mode controls. We report \emph{no}
+results here; the frozen conditions grid is given in Table~\ref{tab:conditions}, and all
+quantitative outcomes appear in Section~\ref{sec:results} \resultplaceholder.
+
+\subsection{Synthetic nonce substrate}
+\label{sec:method:substrate}
+
+Each trial is built over a synthetic repository rather than a real codebase. The substrate is a
+set of files, each containing functions with mechanically generated names
+(\texttt{compute\_$i$\_$j$\_$k$}), and every function is assigned a return value that is a random
+12-character \emph{nonce} derived by hashing the content seed together with the function's
+coordinates. Because the return values are seed-specific nonces with no presence in any training
+corpus, no model can answer a retrieval probe from parametric or memorized knowledge: the only
+admissible source of the answer is the in-context needle. This closes the
+\emph{parametric-recall} loophole that afflicts naturalistic needle-in-a-haystack
+setups~\cite{kamradt2023niah,modarressi2025nolima}, and it makes the retrieval probe gradable by
+exact string match rather than by an LLM judge---removing the possibility that a judge model
+itself degrades with context and contaminates the measurement~\cite{zheng2023judge}. The
+substrate generator is seeded so that the same content seed and substrate item always produce an
+identical repository, target function, and authoritative answer.
+
+\subsection{The needle-position $\times$ volume factorial}
+\label{sec:method:factorial}
+
+The central identification problem is that growing the filler between an early-placed needle and
+a final probe makes three quantities move together: the total context volume $T$, the
+needle$\to$probe distance, and the needle's relative position in the context. Under that
+collinearity, the \emph{lost-in-the-middle} account~\cite{liu2024lostmiddle}---in which accuracy
+depends on \emph{where} information sits, not on \emph{how much} context surrounds it---predicts a
+falling curve from position alone, with no appeal to context accumulation. A volume-only design
+therefore cannot license any claim that degradation is driven by accumulated context rather than
+by position or retrieval distance, a sensitivity that long-context benchmarks have repeatedly
+shown to dominate measured scores~\cite{liu2024lostmiddle,hsieh2024ruler,hong2025contextrot}.
+
+We break the collinearity by crossing the needle position with $T$. The needle is the small,
+fixed block that carries exactly what a probe needs; the factor \texttt{needle\_position} takes
+three levels that place it differently within the assembled transcript:
+\begin{itemize}
+  \item \textbf{front:} \texttt{[needle]\,[filler\ldots]\,[probe]}. The needle$\to$probe distance
+    grows with $T$, reproducing the geometry of a naive volume design.
+  \item \textbf{mid:} \texttt{[filler/2]\,[needle]\,[filler/2]\,[probe]}, recovering the U-shaped
+    position curve.
+  \item \textbf{end:} \texttt{[filler\ldots]\,[needle]\,[probe]}. The needle sits adjacent to the
+    probe, so the needle$\to$probe distance is held at approximately zero \emph{at every} $T$.
+\end{itemize}
+The \textbf{end} arm is the decisive one. Because distance is held near zero across all volumes,
+any monotone fall in accuracy along the \textbf{end} column cannot be explained by retrieval
+distance or by the needle drifting toward the middle; it isolates the effect of accumulated
+volume---the quantity we call rot. Conversely, if moving the needle adjacent to the probe restores
+accuracy, the effect is pure position/distance and we report it as such. The full
+position~$\times$~$T$ surface is reported, but the rot claim is licensed only by the \textbf{end}
+column. This factorial is the harness's answer to the identification critique and is what
+separates our measurement from a re-run of position-sensitivity studies.
+
+\subsection{Two filler streams and difficulty invariance}
+\label{sec:method:filler}
+
+``Difficulty held constant across $T$'' is only credible if nothing about a probe's intrinsic
+hardness changes as the context grows. Naively scaling all filler with $T$ violates this:
+more filler means more edit-like distractors for a state-tracking probe and more temptations for
+an instruction-adherence probe, so a larger $T$ would face a harder question, confounding any
+length effect with a difficulty effect. We therefore split filler into two streams with different
+scaling behavior:
+\begin{itemize}
+  \item \textbf{\texttt{neutral\_volume}$(T)$:} semantically inert turns---scan logs, linter
+    output, generic refactoring deliberation---generated until the context reaches the target
+    token budget. This is the \emph{only} stream that scales with $T$; it carries no information
+    bearing on any probe's answer.
+  \item \textbf{\texttt{structured\_load}:} a \emph{fixed count, independent of} $T$, of the
+    difficulty-bearing items: $K_{\mathrm{distract}}$ abandoned/considered edits that act as
+    distractors for the state probe, and $K_{\mathrm{tempt}}$ \texttt{tests/}-edit temptations
+    for the instruction probe. These counts do not change between the smallest and largest $T$.
+\end{itemize}
+The harness enforces this with a hard assertion (\texttt{assert\_invariants}) checking that the
+structured-load counts are identical at the extreme token budgets, and the authoritative edit log
+that the state probe must reproduce is likewise a fixed-size ground truth. Consequently the number
+of distractors and temptations a probe must contend with is constant across volume; any residual
+hardness change can surface only as a composition main effect, never as a length effect. This is
+the design property that lets us interpret a length$\times$accuracy slope as a property of volume
+and not of a moving difficulty target, and it directly addresses the concern that aggregate
+long-context scores can conflate distinct degradation mechanisms~\cite{hsieh2024ruler,srinivasan2026searchdiscipline}.
+
+The \texttt{composition} factor controls the \emph{character} of the scaling stream while holding
+its volume role fixed: \emph{diverse} (primary) uses heterogeneous neutral turns; \emph{redundant}
+repeats near-identical scaffolding; and \emph{distracting} interleaves near-miss chatter about
+\emph{non-target} functions that, by construction, never states the target nonce. Composition thus
+varies the texture of the haystack without altering what the probe must retrieve, track, or
+refuse.
+
+\subsection{Three mechanical probes}
+\label{sec:method:probes}
+
+All three probes are graded mechanically---no model is asked to judge another model's
+output---so the scorer cannot itself rot and results are reproducible across infrastructure. The
+probe wording is identical at every injection and does not change with $T$.
+\begin{itemize}
+  \item \textbf{A (retrieval).} The needle is an authoritative note stating that the target
+    function returns a specific nonce; the probe asks for that sentinel token. Scoring is
+    exact, case-insensitive match of the 12-character nonce. Because the nonce is unguessable, the
+    chance accuracy of this probe is effectively zero, which is exactly what a needle-free run
+    must produce.
+  \item \textbf{B (state-tracking).} The needle is an authoritative edit log---one most-recent
+    change per file. The probe asks the agent to list every file in the edit log and its change,
+    using only the authoritative log and ignoring the abandoned/considered edits seeded into the
+    structured load. Scoring requires full file recall together with the matching change verb,
+    computed against the harness-injected ground truth.
+  \item \textbf{C (instruction-adherence).} A standing system rule forbids editing anything under
+    \texttt{tests/}. The probe is a direct request to fix a failing test by editing the test file.
+    A pass means the agent does \emph{not} propose a \texttt{tests/} edit. Scoring is sentence-level
+    and mechanical: a sentence proposes a violation only if it references a \texttt{tests/} path
+    together with an edit verb (or an affirmative agreement to do so) and contains no
+    refusal/negation cue, which separates ``I'll edit \texttt{tests/}\ldots'' from
+    ``I won't touch \texttt{tests/}\ldots''.
+\end{itemize}
+The probes are chosen to exercise three qualitatively different capabilities---locating a fact,
+maintaining a running state against distractors, and adhering to a standing
+constraint~\cite{shinn2023reflexion}---so that their degradation can be compared rather than
+collapsed into a single scalar that could hide an inversion~\cite{srinivasan2026searchdiscipline}.
+
+\subsection{Needle-mode controls}
+\label{sec:method:controls}
+
+The factor \texttt{needle\_mode} supplies the controls that distinguish genuine in-context
+retrieval from artifacts of the construction, and is run per composition~$\times$~$T$ rather than
+only in aggregate.
+\begin{itemize}
+  \item \textbf{present:} the authoritative needle is included; the gold answer is the
+    nonce it states. This is the experimental condition.
+  \item \textbf{absent (control):} the needle is removed but the probe is still asked. Since the
+    answer is an unguessable nonce, this run must score at chance (i.e.\ near zero) and---critically
+    ---must \emph{not} rise with $T$. A no-needle accuracy that climbs with volume would indicate
+    the model is exploiting the filler itself, and flags the batch for rejection.
+  \item \textbf{counterfactual (control):} an authoritative note supplies a corrected nonce $N_2$
+    after a stale earlier mention of a different nonce $N_1$; the gold answer is $N_2$. A model
+    that reads and uses the in-context authoritative information reports $N_2$, whereas one falling
+    back on recency or other heuristics reports $N_1$. This separates true context use from
+    surface heuristics that an exact-match retrieval probe alone could not
+    distinguish~\cite{liu2024lostmiddle,modarressi2025nolima}.
+\end{itemize}
+
+\subsection{Conditions}
+\label{sec:method:conditions}
+
+The frozen grid is given in Table~\ref{tab:conditions}. Every cell's full context string is
+serialized and content-addressed by SHA-256 for hash-pinned reproducibility; $T$ is recorded both
+in characters and in tokens under a named tokenizer; and the deterministic assembly seed
+(content-seed) is kept separate from the model-stochasticity seed. Collection order is randomized
+and interleaved, and a drift-anchor cell is re-run periodically so that provider or tokenizer drift
+is detected rather than silently absorbed.
+
+\begin{table}[t]
+\centering
+\caption{Frozen conditions grid for the controlled rot-curve harness. The \textbf{end} level of
+\texttt{needle\_position} is the arm that licenses the volume-driven (rot) reading; the
+\texttt{absent} and \texttt{counterfactual} needle modes are controls.}
+\label{tab:conditions}
+\small
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Factor} & \textbf{Levels} \\
+\midrule
+context length $T$ & $\{5\mathrm{k},\,20\mathrm{k},\,50\mathrm{k},\,100\mathrm{k},\,150\mathrm{k}\}$ tokens (named tokenizer) \\
+needle position & $\{\textsf{front},\,\textsf{mid},\,\textsf{end}\}$ \\
+probe type & $\{\textsf{A\_retrieval},\,\textsf{B\_state},\,\textsf{C\_instruction}\}$ \\
+composition & $\{\textsf{diverse (primary)},\,\textsf{redundant},\,\textsf{distracting}\}$ \\
+needle mode & $\{\textsf{present},\,\textsf{absent (ctrl)},\,\textsf{counterfactual (ctrl)}\}$ \\
+content-seed & $R$ seeds (power-simulation determines $R$) \\
+substrate & $\geq 3$ synthetic repos (pilot); real-repo substrate (robustness) \\
+agent model & $\geq 2$ pinned dated model IDs from $\geq 2$ providers \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+This construction lets the same probe, asked with identical wording and identical
+intrinsic difficulty, be presented at increasing context volumes with the needle either far from,
+midway through, or adjacent to the probe---and with the needle present, absent, or counterfactual.
+The accuracy surface over these factors, reported in Section~\ref{sec:results}
+\resultplaceholder, is what the rest of the paper analyzes.
+
+%% ===== analysis =====
+\section{Analysis Plan and Pre-Registration}
+\label{sec:analysis}
+
+This section pre-registers, in full, the analyses that license each
+contribution \emph{before} any data are collected. It is frozen: the model
+specifications, the power target, the multiplicity hierarchy, and the
+numerical decision rule below are fixed in advance, and any departure is
+logged as a deviation rather than absorbed silently. We report \emph{no}
+results here; throughout, quantities that will be estimated from data are
+written as placeholders (e.g.\ \textsc{[result]}) and the pre-set thresholds
+against which they will be judged are stated explicitly. The motivation is
+standard for evaluation work where analytic flexibility can manufacture
+apparent findings~\cite{hochlehnert2025soberlook}; pre-committing the
+estimands, the error bars, and the stopping rule is what makes a null
+publishable rather than a failure.
+
+\subsection{Estimands and units of analysis}
+\label{sec:estimands}
+
+The atomic observation is a single probe outcome, a Bernoulli pass/fail
+recorded per cell of the frozen grid (context length $T$, needle position,
+probe type, composition, needle mode, content-seed, substrate, model). Cell
+accuracy $\mathrm{acc}(T,\mathrm{pos},\mathrm{probe},\mathrm{comp})$ is the
+mean pass-rate within a cell. Because outcomes within a content-seed share an
+assembly and are not independent, the \emph{unit of analysis is the
+seed-level cluster}, never the pooled raw run: every confidence interval is
+seed-clustered or seed-bootstrapped to avoid pseudo-replication, in line with
+recent guidance on putting honest error bars on language-model
+evaluations~\cite{miller2024errorbars} and on the non-trivial variance of
+benchmark estimates~\cite{madaan2024variance}. Interval estimates for cell
+accuracies use a seed-level nonparametric bootstrap.
+
+\subsection{C1: live-signal validation as incremental skill over a
+length-only baseline}
+\label{sec:c1}
+
+The primary contribution C1 asserts that latent rot is predictable
+\emph{live} from cheap process signals --- tool-call repetition rate,
+diff-progress per token, file-reread count, edit-revert count, output
+entropy, and self-repetition --- \emph{beyond what context length alone
+predicts}. The identification hazard is that both the candidate signals and
+the probe-failure rate rise with $T$, so any raw signal--failure correlation
+is confounded by length. The whole of C1 is therefore phrased as
+\emph{incremental} skill over a $\log(T)$-only baseline; the contribution is
+not ``a signal correlates with failure'' but ``a signal carries information a
+length meter does not already give you for free.''
+
+\paragraph{Screening: partial association controlling for $\log(T)$.}
+As a pre-registered screen, for each signal we compute a partial
+rank association between the signal and probe failure with $\log(T)$ partialled
+out of both. Concretely, failure $y$ and the signal $x$ are each
+rank-transformed and linearly residualized on the rank of $\log(T)$, and the
+Pearson correlation of the residuals is the partial Spearman statistic. The
+raw (length-confounded) correlation is reported alongside, but only to
+exhibit the confound; the partial association is the screening quantity. This
+mirrors the harness implementation, which residualizes on $\log(T)$ before
+testing. Screening operates in the exploratory tier
+(Section~\ref{sec:multiplicity}) under Benjamini--Hochberg control across the
+enumerated signal $\times$ probe $\times$ composition ($\times$ model) family,
+and a signal must additionally clear a non-trivial partial-association
+magnitude to pass the screen. Passing the screen is necessary but not
+sufficient: it does not by itself license C1.
+
+\paragraph{Confirmatory: held-out incremental $\Delta$AUC.}
+The registered confirmatory test for C1 is predictive, not in-sample. We fit
+two nested classifiers of probe failure: a baseline
+$\texttt{fail}\sim\log(T)$ and an augmented
+$\texttt{fail}\sim\log(T)+\texttt{signal}$. Eligibility requires (i) that the
+augmented model add skill over the baseline by a likelihood-ratio test
+\emph{and} (ii) that it improve \emph{out-of-sample} discrimination, measured
+as the area under the ROC curve, on a held-out split. Crucially the split is
+along \emph{composition and model}, not a random row split: a signal that
+only predicts failure within the regime it was tuned on does not generalize
+and does not count. The confirmatory effect size is the held-out
+$\Delta\mathrm{AUC}$ of the augmented model relative to the $\log(T)$-only
+baseline, with a seed-clustered bootstrap interval. The pre-registered
+non-inferiority margin is $\Delta\mathrm{AUC}\geq 0.03$: a signal must beat
+the length-only meter by at least this much on unseen compositions and models
+to be declared informative. If no signal clears the margin, C1 is declared a
+null --- ``length is all you need'' --- and that null is reported as such.
+Tying the claim to held-out predictive lift, rather than to in-sample
+significance, is what makes the ``live thermostat'' reading defensible and
+guards against reading rot into a meter that merely re-derives context
+length.
+
+\subsection{Re-specified primary model: crossed random effects with random
+slope and a $\log(T)\times$composition interaction}
+\label{sec:primary-model}
+
+The degradation surface is analyzed with a crossed-random-effects logistic
+mixed model, re-specified from the pilot's earlier fixed-effects-only form to
+make the heterogeneity the hypothesis is actually about estimable:
+\begin{equation}
+\begin{split}
+\texttt{fail} \;\sim\;& \log(T) + \texttt{needle\_position} +
+\texttt{probe\_type} + \texttt{composition} \\
+&{}+ \log(T)\!:\!\texttt{composition}
++ \big(\log(T)\,\big|\,\texttt{content\_seed}\big)
++ \big(1\,\big|\,\texttt{substrate\_item}\big).
+\end{split}
+\label{eq:primary}
+\end{equation}
+Three features are deliberate. First, the model is \emph{crossed}: a random
+intercept for \texttt{content\_seed} and a separate random intercept for
+\texttt{substrate\_item} acknowledge that seeds and substrates are independent
+sources of variance rather than nested replicates. Second, the random
+\emph{slope} on $\log(T)$ per content-seed lets the degradation \emph{rate}
+vary across seeds; since the hypothesis is precisely that rot rate is
+heterogeneous and partly predictable, a model with only random intercepts
+would assume away the effect of interest and understate uncertainty in the
+slope. Third, the fixed $\log(T)\!:\!\texttt{composition}$ interaction encodes
+the registered expectation that composition (diverse, redundant, distracting)
+modulates the slope of degradation, so the composition effect is allowed to
+act on the rate, not merely on the level. Position and probe type enter as
+fixed effects so the decisive identification contrast --- accuracy versus $T$
+at \texttt{needle\_position}\,$=$\,\texttt{end}, where needle-to-probe
+distance is held near zero --- is recoverable within the same fit and is not
+contaminated by the lost-in-the-middle position
+curve~\cite{liu2024lostmiddle}.
+
+\paragraph{Pre-committed fallbacks.}
+Random-slope crossed GLMMs can fail to converge or yield singular fits. We
+pre-commit, in fixed order, two fallbacks so the choice is not made after
+seeing the estimates: (i) a cluster-bootstrapped generalized estimating
+equation with seed as the cluster, and (ii) a weakly-informative Bayesian
+GLMM with the same fixed and random structure. The fallback is triggered only
+by a documented convergence failure of Eq.~\eqref{eq:primary}, and which
+fallback was used is logged.
+
+\subsection{Power simulation and the rejection of $R=8$}
+\label{sec:power}
+
+The number of content-seeds per cell, $R$, is not assumed; it is set by a
+pre-registration power simulation (\texttt{harness/power\_sim.py}) so that the
+two confirmatory endpoints --- the C1 held-out $\Delta\mathrm{AUC}$ test and
+the C2 timing contrast --- reach at least $80\%$ power at their stated minimum
+effects of interest \emph{after} the multiplicity correction of
+Section~\ref{sec:multiplicity}. The simulation uses a deliberately
+conservative, defensible proxy for the primary degradation contrast: a
+two-proportion comparison of peak-versus-largest-$T$ accuracy whose variance
+is inflated by a clustering design effect
+$\mathrm{deff}=1+(m-1)\cdot\mathrm{ICC}$, with $m$ observations per seed-cluster
+and a plausible intraclass-correlation range. Because the proxy ignores the
+extra information the full random-slope GLMM extracts, its power is a
+\emph{lower bound} on the achievable power; an $R$ that suffices under the
+proxy suffices under the registered model. The simulation sweeps $R$ across a
+grid for strong, moderate, and subtle degradation scenarios at each ICC, and
+the registered rule is to pick the smallest $R$ that delivers $\geq 0.80$
+power in the assumed scenario and ICC after multiplicity. The two endpoints
+are sized separately, and the C2 timing contrast typically demands the
+\emph{largest} $R$; to hold its variance down we use a within-session paired
+fork (the same seed forked into the fork-at-random and fork-at-peak arms) so
+the timing comparison is paired rather than between-subjects.
+
+The pilot's placeholder $R=8$ is \emph{explicitly rejected} by this
+simulation. At $R=8$ the seed-level estimate is too noisy --- a confidence
+half-width on the order of the effects we care about --- and the proxy power
+falls below $0.80$ in every scenario except the implausibly strong-rot case.
+Reporting at $R=8$ would risk a high-variance, irreproducible headline of
+exactly the kind that motivates pre-registration in the first
+place~\cite{hochlehnert2025soberlook,madaan2024variance}; the final $R$ is
+whatever the simulation returns, and $R=8$ is retained only as the rejected
+baseline against which the chosen $R$ is justified.
+
+\subsection{Multiplicity hierarchy}
+\label{sec:multiplicity}
+
+The full battery of tests is enumerated in advance and partitioned into two
+tiers with different error-control regimes, so that the small number of
+load-bearing claims are protected against family-wise error while the wide
+exploratory surface is controlled for false-discovery rate.
+
+\begin{itemize}
+  \item \textbf{Confirmatory tier (family-wise error rate, $\alpha=0.05$).}
+  This tier contains exactly two tests: the C1 incremental-skill test (the
+  held-out $\Delta\mathrm{AUC}$ over the $\log(T)$-only baseline of
+  Section~\ref{sec:c1}) and the C2 timing contrast (fork-at-peak versus
+  fork-at-random, mechanism held constant). FWER across this two-member family
+  is controlled by a Holm / fixed-sequence procedure at $\alpha=0.05$. These
+  are the claims the paper stands or falls on, and they get the strict
+  correction.
+  \item \textbf{Exploratory tier (Benjamini--Hochberg false-discovery
+  rate).} This tier contains the per-signal $\times$ probe $\times$
+  composition ($\times$ model) partial associations used as the C1 screen, the
+  composition-arm comparisons, and the per-probe half-lives (C3). BH-FDR is
+  applied across the full enumerated exploratory family. Findings here are
+  flagged as exploratory and are never promoted into confirmatory claims
+  post hoc.
+\end{itemize}
+
+Refusing to collapse the per-probe analyses (retrieval, state-tracking,
+instruction-adherence) into a single aggregate is deliberate: an aggregate
+scalar can hide an inversion across probe types, a failure mode documented for
+long-horizon agent evaluation~\cite{srinivasan2026searchdiscipline}, so C3
+half-lives are reported per probe within the exploratory tier rather than
+summarized away.
+
+\subsection{Numerical decision rule: \textsc{go} / \textsc{weak} /
+\textsc{null}}
+\label{sec:decision}
+
+The pilot terminates in one of three pre-registered verdicts, decided purely
+by interval bounds and equivalence testing --- no significance stars, no
+post-hoc narrative. Let the C1 effect be the held-out $\Delta\mathrm{AUC}$
+with margin $\delta_{1}=0.03$ (Section~\ref{sec:c1}), let the C2 effect be the
+fork-at-peak-minus-fork-at-random timing contrast with its pre-set minimum
+effect of interest $\mathrm{MEI}_{2}$, and let all bounds be the limits of
+$95\%$ seed-clustered intervals.
+
+\begin{description}
+  \item[\textsc{go}.] Declared iff \emph{all three} hold: the lower $95\%$
+  bound of the C1 held-out $\Delta\mathrm{AUC}$ exceeds $\delta_{1}$;
+  \emph{and} the lower bound of the C2 timing contrast exceeds
+  $\mathrm{MEI}_{2}$; \emph{and} the C0 manipulation check is positive at
+  \texttt{needle\_position}\,$=$\,\texttt{end} (i.e.\ accuracy still falls with
+  $T$ at near-zero needle-to-probe distance, isolating volume-driven rot from
+  position). The placeholder values are \textsc{[c1\_dauc\_lo]},
+  \textsc{[c2\_timing\_lo]}, and \textsc{[c0\_end\_verdict]}.
+  \item[\textsc{null}.] Declared iff the effects are statistically equivalent
+  to negligible: a two one-sided tests (TOST) equivalence procedure rejects
+  the presence of a meaningful effect, i.e.\ the upper $95\%$ bound lies
+  inside the pre-set negligible region. A \textsc{null} is a publishable
+  outcome --- ``length is all you need'' for C1, or ``timing does not separate
+  from mechanism'' for C2 --- and is reported as a finding, not a failed
+  experiment.
+  \item[\textsc{weak}.] Declared otherwise, i.e.\ when an interval spans its
+  MEI so the data neither confirm the effect nor establish equivalence to
+  null. A \textsc{weak} verdict is explicitly \emph{inconclusive}: the
+  registered response is to collect more data, never to report an
+  intermediate effect as if it were a positive finding.
+\end{description}
+
+Pairing a lower-bound criterion for \textsc{go} with a TOST equivalence
+criterion for \textsc{null} makes the two informative verdicts symmetric and
+forces the inconclusive region to be named rather than silently rounded toward
+the more interesting claim. The controls of the design feed this rule as gates
+rather than as headline numbers: the no-needle control must sit at chance and
+must not rise with $T$, and the per-probe chance baselines are tested for
+non-inferiority by TOST rather than by a bare ``not significant,'' so that a
+control passing is an affirmative equivalence statement and not merely an
+absence of evidence.
+
+%% ===== intervention =====
+\section{Intervention Study: Isolating Timing from Mechanism}
+\label{sec:intervention}
+
+The intervention study (Phase~2) tests C2: whether acting at the \emph{detected}
+peak beats acting blindly, and whether that value is attributable to \emph{timing}
+rather than to the intervention mechanism. We run five matched arms on the same
+tasks: (1) a \emph{naive} long session run to completion; (2) \emph{blind periodic
+compaction} that summarizes on a fixed token schedule; (3) \emph{blind restart}
+that starts a fresh session with a short carried summary on a fixed schedule;
+(4) \emph{fork-at-random-time}, which uses the identical snapshot-and-fork
+mechanism as arm~5 but cuts at a context level \emph{not} chosen by the detector;
+and (5) \emph{fork-at-peak}, which snapshots the session at the detector's peak and
+branches from there.
+
+The contrasts are deliberately decomposed. The \emph{timing} effect---our primary
+C2 hypothesis---is arm~5 versus arm~4, with the fork-and-snapshot mechanism held
+constant; this is the only comparison that isolates the value of acting \emph{when}
+the detector fires from the generic value of resetting at all. The \emph{mechanism}
+effect is arm~4 versus arm~3, separating state-preserving forks from
+summary-based restarts. Conflating these (e.g.\ comparing fork-at-peak directly to
+blind restart) would confound timing with state fidelity, so we report both
+contrasts separately. To cut variance on the primary contrast we use within-session
+\emph{paired forking}: the same seed and pre-peak trajectory are forked into both
+arm~4 and arm~5, yielding a paired difference rather than a between-cell one. Power
+for this contrast is sized by the same simulation that sizes the main grid
+(Section~\ref{sec:analysis}).
+
+The endpoint is the dimensionless rot tax recovered---the reduction in excess
+context-to-fixed-quality (equivalently, recovered accuracy-token deficit) of a
+governed arm relative to naive---with a dated, sensitivity-banded dollar figure as a
+strictly secondary reading. We pre-register that a null result here (timing does not
+beat random forking) is a publishable finding: it would show that for the models and
+tasks studied, \emph{when} to reset matters less than \emph{whether} to, which is
+itself decision-relevant for anyone building a governor.
+
+%% ===== inserted placeholder sections =====
+\section{Results}
+\label{sec:results}
+\resultplaceholder{rot-curve, identification (position$\times$volume), control checks,
+signal validation (C1), and intervention contrasts (C2)} Populated only from
+\texttt{results/rot\_raw.jsonl} and \texttt{results/rot\_curve.png} after the
+registered run. No value appears here until then.
+
+\section{Discussion}
+\label{sec:discussion}
+\resultplaceholder{interpretation written strictly after Results} To be completed
+once the registered analysis is run; interpretation is bound to the GO/WEAK/NULL
+rule fixed in Section~\ref{sec:analysis}.
+
+%% ===== limits =====
+\section{Limitations, Reproducibility, and Ethics}
+\label{sec:limitations}
+
+\subsection{Threats to Validity}
+\label{sec:threats}
+
+We organize threats to validity around the identification, measurement, and
+generalization risks that this pre-registered design is built to neutralize, and
+we are explicit about those it cannot.
+
+\paragraph{Construct and identification threats (internal validity).}
+The central internal-validity threat is that an apparent decay with growing
+session context $T$ is in fact a \emph{position} or \emph{needle$\rightarrow$probe
+distance} effect rather than a volume effect---the \emph{lost-in-the-middle}
+account~\cite{liu2024lostmiddle}, which predicts a curve from needle position
+alone with no appeal to context accumulation. We address this with the
+needle-position $\times$ volume factorial (\S\ref{sec:method:factorial}): the rot
+claim is licensed only by the \texttt{end} arm, in which the needle is adjacent
+to the probe and the needle$\rightarrow$probe distance is held at approximately
+zero across every $T$. A second identification threat is \emph{difficulty drift}:
+if the intrinsic hardness of a probe co-varies with $T$, any length effect is
+confounded with a composition effect, a failure mode documented for long-horizon
+iterative coding agents~\cite{orlanski2026slopcodebench}. We separate the filler
+into a \texttt{neutral\_volume}$(T)$ stream that scales with $T$ and a
+\texttt{structured\_load} of fixed count independent of $T$, assert these counts
+in code, and run a standalone difficulty audit. A third threat is
+\emph{construction artifact}: the model may exploit the filler itself. We guard
+this with a per-composition$\times T$ no-needle control evaluated under a TOST
+non-inferiority test against an empirically defined per-probe chance baseline, and
+with a filler$\leftrightarrow$gold similarity cap. We refuse to report only the
+aggregate across probe types, since a scalar can hide an inversion between probe
+families~\cite{srinivasan2026searchdiscipline}; the retrieval, state-tracking, and
+instruction-adherence probes are reported separately
+(cf.~\cite{hsieh2024ruler,modarressi2025nolima}).
+
+\paragraph{Measurement threats.}
+Parametric or memorized recall would let a model answer without using the
+in-context needle. The substrate is therefore synthetic, with function names and
+return values drawn as random nonces per content-seed, so no answer is available
+from pretraining knowledge~\cite{kamradt2023niah}. The retrieval probe is
+mechanical---a unique 12-character nonce scored by exact string match---which
+removes the ``the judge rots too'' confound inherent to LLM-graded
+scoring~\cite{zheng2023judge}. A counterfactual/corrupted-needle control
+distinguishes a model that uses in-context information from one exploiting recency
+or other heuristics. Eval-level measurement noise is a known source of spurious
+findings~\cite{miller2024errorbars,madaan2024variance}, which motivates the
+clustered, CI-based reporting described below.
+
+\paragraph{Tokenizer and provider drift.}
+Because $T$ is defined in tokens, an undocumented change to the tokenizer or to the
+served model would silently move the independent variable. We pin dated model IDs,
+record $T$ in both characters and tokens under a \emph{named} tokenizer verified
+against the provider count-tokens endpoint at collection, and log model version,
+tokenizer version, and timestamp per row. A \emph{drift-anchor} cell is re-run
+periodically during collection, and the run aborts if anchor accuracy moves beyond
+a pre-set tolerance. These measures bound, but cannot wholly eliminate, drift in a
+hosted, non-open substrate; we treat this as a residual limitation rather than a
+solved problem.
+
+\paragraph{Statistical-conclusion threats.}
+Pooling raw runs would induce pseudo-replication. The unit of analysis is
+per-seed/cluster-robust, never pooled raw runs, and the primary model carries
+crossed random effects with a random slope on $\log(T)$
+(\S\ref{sec:primary-model}). Reproducibility pitfalls in reasoning-model
+evaluation~\cite{hochlehnert2025soberlook} and the variance structure of small
+eval sets~\cite{miller2024errorbars,maiapolo2024tinybenchmarks} inform our
+decision rule, which is stated numerically via CI bounds and TOST equivalence
+rather than significance stars, and our refusal to report a publishable middle
+claim when a confidence interval spans the minimum effect of interest.
+
+\paragraph{External-validity threats and the lab/field separation.}
+The controlled study runs on a synthetic substrate, which maximizes internal
+validity at the cost of ecological realism. We therefore draw a hard line between
+the lab and the field: the controlled lab establishes causality, whereas breadth
+must be established separately by the opt-in field study (\S\ref{sec:ethics}). The
+two are \emph{reported separately and never blended}; no claim about live coding
+sessions is made from the controlled pilot. The chief remaining external-validity
+risks are \emph{single-substrate overfit} and \emph{single-provider overfit}: a
+result that holds on one synthetic repository or one model family may not
+transfer. The design requires at least three synthetic substrates for the pilot
+plus a real-repo robustness substrate, and at least two pinned dated model IDs
+drawn from at least two providers, so that any reported effect must survive
+substrate and provider variation rather than resting on a single point. Even so,
+two providers do not span the space of deployed systems, and we frame the pilot
+accordingly. The metric itself is a potential threat---an arbitrary cost unit
+could drive the headline---so the primary rot-tax quantity is dimensionless
+(excess context-to-fixed-quality, or the accuracy-token deficit area), with the
+monetary version held strictly secondary
+(\S\ref{sec:reproducibility})~\cite{erol2025costofpass}.
+
+\subsection{Reproducibility}
+\label{sec:reproducibility}
+
+The design is a frozen pre-registration: the conditions, operational definitions,
+statistical model, multiplicity hierarchy, and GO/WEAK/NULL decision rule are
+fixed before any data collection, and every subsequent change is recorded in an
+append-only deviation log for provenance.
+
+\paragraph{Hash-pinned context artifacts.}
+Every cell's full context string is deterministically serialized and
+content-addressed (hash-pinned), and the artifacts are released. This makes the
+exact input to every model call recoverable and independently verifiable, rather
+than regenerated from a possibly-changed assembly procedure.
+
+\paragraph{Named tokenizer and dated model IDs.}
+$T$ is reported in characters and in tokens under a named tokenizer, verified at
+collection against the provider count-tokens endpoint, and each agent model is a
+pinned, dated model ID. Per row we log the model version, tokenizer version, and
+timestamp, so that a future replication can detect any silent change to the
+substrate.
+
+\paragraph{Content-seed versus sampling-seed.}
+We separate the \emph{content-seed}, which deterministically governs context
+assembly (including the per-seed random nonces), from the \emph{sampling-seed},
+which governs model stochasticity. Generation is run at temperature~$0$ with all
+available determinism knobs pinned; where the endpoint remains non-deterministic,
+each frozen context is replayed $K$ times and within-cell variance is reported
+rather than concealed. This two-seed discipline lets a replicator reproduce the
+exact inputs even when the provider cannot guarantee bit-exact outputs.
+
+\paragraph{Randomized collection order and drift anchor.}
+Collection order is randomized and interleaved (via a \texttt{--shuffle} control)
+so that slow drift in the hosted endpoint cannot align with any factor in the
+grid. The drift-anchor cell is re-run periodically and aborts the run on
+out-of-tolerance movement, time-stamping the boundary of any data affected by a
+mid-collection change.
+
+\paragraph{Released code and pre-committed analysis.}
+The harness implements the invariant assertions, the controls, the power
+simulation that fixes the sample size $R$, and the pre-specified primary model
+with its pre-committed convergence fallback, so that the analysis path is fixed
+in advance rather than chosen after seeing the data. Numeric results,
+sample sizes, effect estimates, and confidence intervals are deliberately omitted
+from this version; the assembler inserts explicit placeholders where reported
+quantities will appear once data exist. Where a monetary figure is eventually
+reported, it is computed as the dimensionless quantity multiplied by a pinned,
+dated price table and is accompanied by a $\pm 50\%$ price-sensitivity band, so
+that the headline does not depend on a single volatile price
+point~\cite{erol2025costofpass}.
+
+\subsection{Ethics}
+\label{sec:ethics}
+
+\paragraph{Scope of the field study and the consent boundary.}
+The breadth claim depends on an opt-in field study of real coding sessions, and
+its central ethical commitment is a strict consent and minimization boundary. The
+field study is \emph{opt-in} and \emph{metadata-only}: it collects derived
+session signals and outcome metadata, and it does \emph{not} collect source code
+or prompts. This boundary is a hard design constraint, not a configurable option,
+and it is the reason the field study is reported separately from the controlled
+lab. Because no source code or prompt text is ingested, the field study cannot
+expose proprietary code, secrets, or user-authored content; the live signals used
+for the predictability analysis are defined in tokenizer-independent terms over
+session-level events rather than over content.
+
+\paragraph{Separation of causal and breadth claims.}
+We do not make any claim about live coding sessions until the opt-in,
+metadata-only field study runs, and we never blend its breadth evidence with the
+lab's causal evidence. ``Rot exists'' is treated as a manipulation check, never as
+a headline, which guards against overstating the practical reach of a controlled,
+synthetic-substrate result.
+
+\paragraph{Research integrity.}
+The frozen pre-registration, the enumerated multiplicity hierarchy, the
+numeric and TOST-based GO/WEAK/NULL decision rule, and the append-only deviation
+log are integrity safeguards as much as methodological ones: they commit us in
+advance to publishing null and inconclusive outcomes rather than selectively
+reporting positive findings. A negative result for the intervention study is
+likewise pre-committed as a publishable finding.
+
+\paragraph{Cost, compute, and disclosure.}
+Reporting cost in dimensionless accuracy-token units first, with a dated and
+sensitivity-banded monetary figure only as a secondary quantity, avoids
+overstating economic claims that are sensitive to volatile provider
+pricing~\cite{erol2025costofpass}. All pinned model IDs, price tables, and version
+metadata are disclosed with the released artifacts so that the compute footprint
+and its monetary translation are auditable.
+
+%% ===== conclusion =====
+\section{Conclusion}
+\label{sec:conclusion}
+Long agentic-coding sessions decay; the field has built excellent thermometers for
+this and no thermostat. We pre-register a controlled harness that (i) confirms, only
+as a manipulation check, that context rot transfers to agentic filler while
+separating volume-driven decay from position effects; (ii) tests whether that decay
+is predictable \emph{live} from cheap signals beyond what context length alone
+predicts; and (iii) tests whether intervening at a detected peak beats intervening
+blindly, with timing isolated from mechanism. We commit in advance to the
+GO/WEAK/NULL rule and to publishing null and inconclusive outcomes. The artifacts,
+including a hash-pinned context corpus and the analysis code, are released so that
+the curve, the detector, and the dollar figure can be reproduced on independent
+infrastructure.
+
+%% ===== bibliography =====
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\end{document}

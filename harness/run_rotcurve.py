@@ -39,25 +39,28 @@ except Exception:
     TOKENIZER = "heuristic-4chars"
 
 
-def _positions(kind, quick):
+def _positions(kind, quick, positions_override):
     if kind == "C":
         return ["na"]
+    if positions_override:
+        return positions_override
     return (["front", "end"] if quick else ["front", "mid", "end"])
 
 
-def _needle_modes(kind, quick):
-    if kind != "A":
+def _needle_modes(kind, quick, primary_only):
+    if kind != "A" or primary_only:
         return ["present"]
     return (["present", "absent"] if quick else ["present", "absent", "counterfactual"])
 
 
-def build_cells(cfg, quick):
-    items = cfg_mod.get(cfg, "experiment.num_substrate_items", 10)
-    levels = cfg_mod.get(cfg, "experiment.probe_milestones_tokens")
-    comps = cfg_mod.get(cfg, "experiment.compositions")
-    reps = cfg_mod.get(cfg, "experiment.repetitions", 8)
+def build_cells(cfg, quick, *, reps=None, items=None, primary_only=False,
+                levels=None, positions=None):
+    items = items if items is not None else cfg_mod.get(cfg, "experiment.num_substrate_items", 10)
+    levels = levels or cfg_mod.get(cfg, "experiment.probe_milestones_tokens")
+    comps = ["diverse"] if primary_only else cfg_mod.get(cfg, "experiment.compositions")
+    reps = reps if reps is not None else cfg_mod.get(cfg, "experiment.repetitions", 8)
     if quick:
-        items, levels, comps, reps = 2, [5000, 50000, 150000], ["diverse"], 2
+        items, levels, comps, reps = 2, [5000, 50000, 120000], ["diverse"], 2
     seed0 = cfg_mod.get(cfg, "run.seed", 42)
     nf = cfg_mod.get(cfg, "substrate.n_files", 6)
     ng = cfg_mod.get(cfg, "substrate.n_functions_per_file", 5)
@@ -66,13 +69,32 @@ def build_cells(cfg, quick):
         sub = generate_substrate(item, seed0, nf, ng)
         assert_invariants(sub)
         for probe in make_probes(sub):
-            for pos in _positions(probe.kind, quick):
-                for nm in _needle_modes(probe.kind, quick):
+            for pos in _positions(probe.kind, quick, positions):
+                for nm in _needle_modes(probe.kind, quick, primary_only):
                     for comp in comps:
                         for T in levels:
                             for rep in range(reps):
                                 cells.append((sub, probe, T, pos, comp, nm, seed0 + rep, item, rep))
     return cells
+
+
+def estimate_cost(cells, model, pricing):
+    """Dry cost estimate (no API). Sizes input tokens from a representative trial per
+    (probe_kind, T, needle_mode) cell shape and assumes ~400 output tokens/call."""
+    cache, total_in = {}, 0
+    for (sub, probe, T, pos, comp, nm, seed, item, rep) in cells:
+        key = (probe.kind, T, nm)
+        if key not in cache:
+            tr = assemble_trial(sub, probe.kind, probe.text, T, position=pos, composition=comp,
+                                needle_mode=nm, content_seed=seed)
+            cache[key] = tr.est_input_tokens
+        total_in += cache[key]
+    total_out = 400 * len(cells)
+    p = pricing.get(model)
+    if not p:
+        raise KeyError(f"No pricing for '{model}' in config.yaml:pricing")
+    cost = (total_in * p["input"] + total_out * p["output"]) / 1_000_000.0
+    return total_in, total_out, cost
 
 
 def run_one(cell, agent_client, cost, logger, model_version):
@@ -115,6 +137,14 @@ def main():
     ap.add_argument("--quick", action="store_true")
     ap.add_argument("--max-parallel", type=int, default=None)
     ap.add_argument("--limit", type=int, default=None)
+    ap.add_argument("--model", default=None, help="override agent model (writes a per-model file)")
+    ap.add_argument("--reps", type=int, default=None)
+    ap.add_argument("--items", type=int, default=None)
+    ap.add_argument("--primary-only", action="store_true",
+                    help="diverse composition + present needle only (cheap confirmation subset)")
+    ap.add_argument("--levels", default=None, help="comma list of token milestones to override")
+    ap.add_argument("--positions", default=None, help="comma list, e.g. front,end")
+    ap.add_argument("--estimate", action="store_true", help="dry cost estimate, no API calls")
     ap.add_argument("--shuffle", action="store_true",
                     help="randomize collection order (recommended for real runs; DESIGN §4)")
     args = ap.parse_args()
@@ -122,28 +152,41 @@ def main():
     cfg = cfg_mod.load_config(args.config)
     provider = args.provider or cfg_mod.get(cfg, "run.provider", "mock")
     is_mock = provider == "mock"
-    suffix = ".MOCK" if is_mock else ""
-    out_path = REPO_ROOT / "results" / f"rot_raw{suffix}.jsonl"
-    spend_path = REPO_ROOT / "logs" / f"spend{suffix}.jsonl"
-    event_path = REPO_ROOT / "logs" / f"events{suffix}.jsonl"
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text("")
-
-    agent_model = cfg_mod.get(cfg, "models.agent_model")
+    agent_model = args.model or cfg_mod.get(cfg, "models.agent_model")
     pricing = cfg_mod.get(cfg, "pricing")
     budget = cfg_mod.get(cfg, "run.budget_usd_ceiling", 25.0)
     maxp = args.max_parallel or cfg_mod.get(cfg, "run.max_parallel_sessions", 4)
+
+    levels = [int(x) for x in args.levels.split(",")] if args.levels else None
+    positions = args.positions.split(",") if args.positions else None
+    cells = build_cells(cfg, args.quick, reps=args.reps, items=args.items,
+                        primary_only=args.primary_only, levels=levels, positions=positions)
+    if args.shuffle:
+        random.Random(cfg_mod.get(cfg, "run.seed", 42)).shuffle(cells)
+    if args.limit:
+        cells = cells[: args.limit]
+
+    if args.estimate:
+        price_model = "mock" if is_mock else agent_model
+        tin, tout, cost = estimate_cost(cells, price_model, pricing)
+        print(f"[estimate] model={price_model} cells={len(cells)}")
+        print(f"[estimate] input_tokens~{tin:,} output_tokens~{tout:,}")
+        print(f"[estimate] EST COST ~ ${cost:.2f}  (budget ceiling ${budget:.2f})")
+        print(f"[estimate] {'OK, fits budget' if cost <= budget else 'OVER BUDGET — reduce grid'}")
+        return
+
+    slug = "" if is_mock else "__" + agent_model.replace("/", "-").replace(":", "-").replace(".", "_")
+    suffix = ".MOCK" if is_mock else ""
+    out_path = REPO_ROOT / "results" / f"rot_raw{suffix}{slug}.jsonl"
+    spend_path = REPO_ROOT / "logs" / f"spend{suffix}{slug}.jsonl"
+    event_path = REPO_ROOT / "logs" / f"events{suffix}{slug}.jsonl"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text("")
 
     cost = CostTracker(pricing, budget, spend_path)
     logger = StructuredLogger(event_path)
     agent_client = ModelClient("mock", "mock") if is_mock else ModelClient(provider, agent_model)
     model_version = "mock" if is_mock else agent_model
-
-    cells = build_cells(cfg, args.quick)
-    if args.shuffle:
-        random.Random(cfg_mod.get(cfg, "run.seed", 42)).shuffle(cells)
-    if args.limit:
-        cells = cells[: args.limit]
 
     print(f"[rot-curve] provider={provider} model={agent_client.model} tokenizer={TOKENIZER} "
           f"cells={len(cells)} budget=${budget:.2f} parallel={maxp}")

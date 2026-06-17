@@ -1,0 +1,308 @@
+% !TEX root = ../main.tex
+%
+% Section: Intervention Study (Phase 2 / the C2 test).
+% Source of truth: docs/DESIGN.md, Section 8 ("Intervention study").
+%
+% RESEARCH-INTEGRITY NOTE FOR THE ASSEMBLER
+% -----------------------------------------
+% This file contains NO experimental results. Every place where a measured
+% number, effect size, confidence interval, p-value, dollar figure, or
+% qualitative outcome ("better"/"worse"/"null") would eventually appear is
+% marked with the macro
+%
+%     \resultplaceholder{<short tag>}
+%
+% which the assembly pipeline replaces once Phase-2 data exist. The macro is
+% defined to render conspicuously so that an un-substituted placeholder cannot
+% silently survive into a compiled PDF. Do NOT hand-edit these into numbers.
+%
+% The file is self-contained: if compiled directly as an article it provides
+% its own preamble (guarded by \@ifundefined) so the section can be checked in
+% isolation. When \input from a larger document, the guards are inert.
+
+% --- Standalone-compilation guard -----------------------------------------
+% If no document class is active yet, bootstrap a minimal article so this file
+% compiles on its own. When this file is \input from main.tex, \documentclass
+% is already defined and this whole block is skipped.
+\makeatletter
+\@ifundefined{chapter}{}{}% touch \@ifundefined so makeatletter is "used"
+\makeatother
+
+\providecommand{\resultplaceholder}[1]{%
+  \textbf{[\,RESULT: #1 --- pending Phase-2 data; assembler to fill\,]}%
+}
+
+% ==========================================================================
+\section{Intervention Study}
+\label{sec:intervention}
+
+The preceding sections establish, before any intervention is run, (i) that
+agentic-coding context rot is identifiable as a volume effect separable from
+needle--probe distance and (ii) that latent rot may be predictable live from
+cheap process signals beyond what raw context length already explains. The
+present section specifies \emph{Phase~2}: a pre-registered, matched-arm
+intervention experiment whose purpose is to test whether acting on the live
+detector recovers quality, and---more sharply---whether the \emph{timing} of
+the action carries value that is separable from the \emph{mechanism} of the
+action. We freeze the design here, in advance of data collection, to foreclose
+hypothesizing after results are known (HARKing): the arms, the contrasts, the
+endpoints, the unit of analysis, and the decision rule are all committed below
+and are not revisable after the unblinding. This section reports
+\emph{no} outcomes; all result-bearing statements are deferred to explicit
+placeholders that the assembler fills only once the experiment has run.
+
+\subsection{Motivation and the two questions Phase~2 must separate}
+\label{sec:intervention:motivation}
+
+A large body of prior work shows that long-running agents degrade as their
+context accumulates and that interventions exist which can, in principle,
+arrest that degradation. Degradation over accumulating context and input
+length is documented offline by \emph{Context Rot}~\cite{hong2025contextrot}
+and, for the harder non-literal-match regime, by NoLiMa~\cite{modarressi2025nolima};
+the long-horizon coding case is documented by EvoClaw~\cite{deng2026evoclaw}
+and SlopCodeBench~\cite{orlanski2026slopcodebench}, the latter reporting that
+explicit quality guidance shifts the offset but not the decay rate---direct
+motivation for an \emph{active} reset rather than passive prompting. The
+half-life formalism and the notion of a computed intervention point are
+inherited from the Debugging Decay Index~\cite{adnan2025ddi}, and the
+horizon-bounded premise from METR~\cite{kwa2025metr}. The intervention menu is
+likewise established: paging and memory management~\cite{packer2023memgpt},
+recursive summarization~\cite{wang2023recursive}, prompt and tool-output
+compression~\cite{jiang2023llmlingua,jiang2024longllmlingua,chopra2026headroom},
+retrieval that keeps knowledge out of context entirely~\cite{lewis2020rag},
+and practitioner compaction guidance~\cite{rajasekaran2025contextengineering,yan2025dontbuild}.
+The closest structural sibling, \emph{Search Discipline}~\cite{srinivasan2026searchdiscipline},
+relocates the corrective decision into an external control loop along a spatial
+axis; ours is the temporal analogue.
+
+What is \emph{not} established---and what Phase~2 exists to test---is whether
+intervening \emph{at a detected peak} beats intervening at an arbitrary point,
+holding the intervention mechanism fixed. Every method cited above applies its
+intervention on a static schedule or an always-on heuristic. None isolates the
+marginal value of \emph{timing}. The danger this design guards against is a
+confound that would otherwise be fatal to the headline claim: if forking at the
+detected peak helped, a naive reading would credit ``detection,'' when in fact
+\emph{any} restart---at any time---might help simply because a fresh context is
+shorter. We therefore decompose the question into two contrasts that must not
+be conflated:
+
+\begin{itemize}
+  \item \textbf{The timing contrast (primary, C2):} fork at the detected peak
+        versus fork at a random time, with the snapshot/fork \emph{mechanism
+        held constant}. A positive timing contrast is the only evidence that
+        \emph{when} we act adds value beyond \emph{that} we act.
+  \item \textbf{The mechanism contrast (secondary):} fork-and-restore (carrying
+        forward preserved state) versus blind restart plus a short summary,
+        with timing left uncontrolled. This isolates state fidelity from
+        lossy summarization, independent of the timing question.
+\end{itemize}
+
+Keeping these orthogonal is the central design commitment of this section. The
+timing contrast is the confirmatory test of contribution~C2; the mechanism
+contrast is exploratory.
+
+\subsection{The five matched arms}
+\label{sec:intervention:arms}
+
+The study comprises five arms, run on a common pool of seeded tasks drawn from
+the same synthetic substrates and pinned models used in the upstream phases. The
+fifth arm, \emph{fork-at-random-time}, was added relative to an earlier
+four-arm draft precisely so that timing and mechanism could be separated; with
+only four arms the primary C2 contrast is unidentified.
+
+\begin{enumerate}
+  \item \textbf{Naive long session.} The agent runs to completion in a single
+        unbroken context with no intervention. This is the do-nothing
+        counterfactual against which the dimensionless rot tax is charged.
+
+  \item \textbf{Blind periodic compaction.} The running context is compacted on
+        a fixed schedule that is blind to the live detector---compaction fires
+        on a clock/length trigger regardless of whether rot is present. This is
+        the static-schedule baseline representative of deployed compaction
+        practice~\cite{rajasekaran2025contextengineering,yan2025dontbuild}.
+
+  \item \textbf{Blind restart $+$ short summary.} At a blind trigger the session
+        is restarted from an empty context seeded only with a short,
+        lossy natural-language summary of progress so far---the recursive- or
+        running-summary intervention~\cite{wang2023recursive}. State not
+        captured by the summary is discarded.
+
+  \item \textbf{Fork-at-random-time.} The session is snapshotted and forked
+        using the \emph{same} state-preserving mechanism as arm~5, but the cut
+        is taken at a \emph{non-detected}, randomly chosen context size $T$.
+        This arm shares its mechanism with arm~5 and differs only in timing;
+        it shares its ``acting via a fork'' character with arm~3 and differs
+        only in fidelity (preserved state versus summary).
+
+  \item \textbf{Fork-at-peak.} The session is snapshotted and forked at the
+        \emph{detected peak}---the context point flagged by the live detector
+        of the upstream C1 phase---using the identical fork mechanism as
+        arm~4. This is the arm the detector is meant to enable.
+\end{enumerate}
+
+The arms are \emph{matched} in the operational sense that arms~4 and~5 differ
+only in \emph{when} the fork is taken (the same snapshot/restore machinery is
+used for both), and arms~3 and~4 differ only in \emph{what} is carried across
+the cut (a lossy summary versus preserved state). This matching is what makes
+the two contrasts in Section~\ref{sec:intervention:contrasts} clean.
+
+\begin{table}[h]
+  \centering
+  \caption{The five matched arms and the contrasts they license. Each contrast
+  holds one factor fixed (struck through) and varies the other.}
+  \label{tab:arms}
+  \begin{tabular}{c l c c}
+    \toprule
+    Arm & Description & Mechanism & Timing \\
+    \midrule
+    1 & Naive long session            & none              & ---            \\
+    2 & Blind periodic compaction     & compaction        & blind/static   \\
+    3 & Blind restart $+$ summary     & lossy summary     & blind          \\
+    4 & Fork-at-random-time           & fork (preserve)   & random $T$     \\
+    5 & Fork-at-peak                  & fork (preserve)   & detected peak  \\
+    \midrule
+    \multicolumn{2}{l}{\emph{Timing contrast} (primary, C2)}
+        & \multicolumn{1}{c}{$5$ vs.\ $4$} & mechanism fixed \\
+    \multicolumn{2}{l}{\emph{Mechanism contrast} (secondary)}
+        & \multicolumn{1}{c}{$4$ vs.\ $3$} & timing uncontrolled \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{The two pre-registered contrasts}
+\label{sec:intervention:contrasts}
+
+\paragraph{Timing effect (primary, C2): arm~5 versus arm~4.}
+With the fork mechanism held constant across the two arms, the only difference
+is whether the cut is taken at the detected peak (arm~5) or at a random,
+non-detected context size (arm~4). A reliable advantage of arm~5 over arm~4 is
+the decisive evidence for C2: it shows that intervention \emph{timing} carries
+value, and not merely that ``restarting helps.'' This contrast is the
+confirmatory test of the section and is the one the live detector must justify.
+Its outcome is \resultplaceholder{timing contrast, arm 5 vs.\ arm 4: effect and
+CI}.
+
+\paragraph{Mechanism effect (secondary): arm~4 versus arm~3.}
+Holding the act of restarting fixed but varying fidelity---preserved state
+(arm~4) versus a lossy summary (arm~3)---isolates whether carrying genuine
+state across the cut beats summarizing it. This speaks to the long-running
+debate between state preservation~\cite{packer2023memgpt} and
+summarization~\cite{wang2023recursive} but is reported as exploratory, not
+confirmatory, because timing is not controlled in this comparison. Its outcome
+is \resultplaceholder{mechanism contrast, arm 4 vs.\ arm 3: effect and CI}.
+
+\paragraph{Reference comparisons.}
+The static-schedule arms (2 and 3) and the naive arm (1) provide the backdrop
+against which the dimensionless rot tax is charged; pairwise comparisons among
+arms~1--3 and the fork arms are reported as exploratory descriptive context and
+are summarized in \resultplaceholder{full arm-by-arm comparison table}. None of
+these is permitted to substitute for the primary C2 timing contrast.
+
+\subsection{Within-session paired forking for variance control}
+\label{sec:intervention:paired}
+
+Because the timing contrast (arm~5 vs.\ arm~4) is the quantity we most need to
+measure precisely, we reduce its variance by \emph{pairing at the source}. A
+single seeded session is run forward once and then forked twice from that same
+shared history: once at the detected peak (yielding the arm~5 trajectory) and
+once at a random non-detected $T$ (yielding the arm~4 trajectory). Because both
+forks descend from an identical pre-fork session, the per-seed nuisance
+variation---task difficulty, early model luck, substrate idiosyncrasy---is
+shared and differences out, so the paired comparison estimates the timing
+effect with markedly tighter intervals than an unpaired between-session
+contrast would. The analysis of the C2 contrast is therefore a
+\emph{paired} (within-session) comparison, with the pairing respected in the
+error model so that the two forks of one session are never treated as
+independent observations.
+
+This pairing is applied to the arm~5-versus-arm~4 timing contrast specifically;
+the remaining arms are run on the shared seed pool but are not required to be
+forked from the identical pre-fork state, since they do not enter the primary
+contrast. The unit of analysis remains the seed/cluster, never the pooled raw
+run, to avoid pseudo-replication.
+
+\subsection{Endpoints}
+\label{sec:intervention:endpoints}
+
+We pre-commit to the following endpoints, in priority order.
+
+\paragraph{Task success.} The primary task-level outcome is whether the agent's
+final state satisfies the task's mechanical acceptance check (the same
+nonce-/edit-based mechanical scoring used upstream, with no LLM judge). Reported
+as \resultplaceholder{task-success rate by arm}.
+
+\paragraph{Dimensionless rot tax recovered (primary economic endpoint).}
+The headline economic quantity is \emph{dimensionless} and provider-agnostic:
+the excess context-to-fixed-quality---the accuracy-deficit area between a
+governed run and the naive run, in accuracy-token units---that the intervention
+\emph{recovers} relative to the naive arm. Charging the tax only against the
+governed-versus-naive counterfactual keeps the quantity coherent (a
+non-rotting run pays no tax). Being dimensionless, it is directly comparable to
+METR-style horizons~\cite{kwa2025metr} and is reported without reference to any
+price table as \resultplaceholder{dimensionless rot tax recovered, per arm and
+for the C2 contrast}.
+
+\paragraph{USD rot tax (secondary, never the headline).}
+For interpretability only, the dimensionless quantity is multiplied by a
+\emph{pinned, dated} price table to express recovered tax in dollars, reported
+with a $\pm 50\%$ price-sensitivity band to reflect the well-documented
+instability of list prices as cost proxies~\cite{chen2026pricereversal} and the
+gap between per-token price and realized serving cost~\cite{patil2026beyondtoken,erdil2025inference};
+the canonical quality-per-dollar framing follows
+Cost-of-Pass~\cite{erol2025costofpass}. Caching economics---PagedAttention-style
+serving~\cite{kwon2023pagedattention} and commercial prompt
+caching~\cite{anthropic2026promptcaching}---bound how cheaply accumulated
+context can be re-read and are noted only to contextualize the band. The USD
+endpoint is reported as \resultplaceholder{USD rot tax recovered with $\pm 50\%$
+band} and is explicitly subordinate to the dimensionless endpoint.
+
+\subsection{Power, analysis, and decision rule}
+\label{sec:intervention:power}
+
+The study is powered by the same pre-registration power simulation that fixes
+the number of content seeds $R$ for the upstream phases, here targeting
+$\geq 80\%$ power for the C2 timing contrast at its pre-stated minimum effect of
+interest after multiplicity control. The within-session pairing of
+Section~\ref{sec:intervention:paired} is built into the simulated design so that
+the variance reduction it provides is reflected in the required $R$. The
+realized sample is reported as \resultplaceholder{realized $R$, sessions per
+arm, and number of paired forks}.
+
+The C2 timing contrast (arm~5 vs.\ arm~4) is confirmatory and is controlled at
+the family-wise level alongside the upstream C1 test; the mechanism contrast and
+all arm-by-arm comparisons are exploratory and controlled by false-discovery
+rate. The decision rule is numeric and committed in advance, with no
+significance stars:
+
+\begin{itemize}
+  \item \textbf{GO (timing matters):} the lower bound of the confidence interval
+        on the paired arm~5-versus-arm~4 timing contrast exceeds the pre-set
+        minimum effect of interest. Result: \resultplaceholder{C2 GO/WEAK/NULL
+        determination with CI bounds}.
+  \item \textbf{NULL (publishable):} the upper bound of that interval lies below
+        a pre-set negligible region under an equivalence (TOST) test---i.e.,
+        timing demonstrably does \emph{not} matter at a magnitude we would care
+        about. We commit, in advance, that this is a publishable finding and
+        will be reported as such: a credible null on intervention timing is
+        itself an informative result, not a failed experiment.
+  \item \textbf{WEAK (inconclusive):} the interval spans the minimum effect of
+        interest. This is treated as inconclusive and triggers additional data
+        collection, never a publishable middle claim.
+\end{itemize}
+
+We state plainly that the experiment is designed so that a negative result is
+publishable: whether the detector-timed fork beats a randomly-timed fork is a
+genuine open question, and pre-committing to report the null---rather than
+quietly redefining the hypothesis after unblinding---is the entire point of
+freezing this section before Phase~2 runs.
+
+\subsection{What this section does and does not claim}
+\label{sec:intervention:scope}
+
+Phase~2 is a controlled, lab establishment of \emph{causality} for the timing
+of an intervention. It makes no claim about live production agent sessions; any
+such breadth claim is reserved for the separately-reported, opt-in field study
+and is never blended with these lab results. ``Intervention helps'' is not the
+contribution; ``intervention timing, separated from mechanism, carries
+measurable value (or, equivalently and publishably, demonstrably does not)'' is
+the claim Phase~2 is built to adjudicate.
