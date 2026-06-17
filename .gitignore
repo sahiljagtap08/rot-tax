@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.env
+.venv/
+venv/
+# keep results/logs structure but ignore large raw dumps if needed later
+results/*.MOCK.*
+logs/*.MOCK.*
+*.DS_Store
+*.pdf

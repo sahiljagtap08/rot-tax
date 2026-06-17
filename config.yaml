@@ -1,0 +1,38 @@
+# Rot Tax pilot — configuration. Defaults are intentionally conservative.
+# Everything here is easy to change; nothing scientific is hard-coded in source.
+
+run:
+  seed: 42
+  budget_usd_ceiling: 25.0          # hard ABORT if exceeded
+  max_parallel_sessions: 4
+  provider: mock                    # mock | anthropic | openai  (mock needs no key, no money)
+
+models:
+  # model under study (the "agent" whose context we rot). Pin a DATED id for real runs.
+  agent_model: claude-haiku-4-5-20251001
+  # v0.2: Probe A is mechanical (nonce exact-match), so NO scorer model is needed.
+
+experiment:
+  probe_milestones_tokens: [5000, 20000, 50000, 100000, 150000]
+  probe_types: [A_retrieval, B_state, C_instruction]
+  needle_positions: [front, mid, end]   # 'end' (distance~0) is the identification arm
+  needle_modes: [present, absent, counterfactual]   # absent/counterfactual = controls (Probe A)
+  compositions: [diverse, redundant, distracting]   # diverse is primary
+  repetitions: 32                   # PLACEHOLDER from power_sim (strong-rot, ICC=0.1). Re-run
+                                    # python -m harness.power_sim and set per your assumed effect.
+  num_substrate_items: 10           # distinct synthetic "repos" (>=3 required; 10 for the pilot)
+
+substrate:
+  kind: synthetic                   # synthetic (controlled) | repo (real, future)
+  n_files: 6
+  n_functions_per_file: 5
+
+# Prices in USD per 1,000,000 tokens. VERIFY against current provider pricing
+# before reporting any dollar figure. Cost tracker uses these values verbatim.
+pricing:
+  claude-haiku-4-5-20251001:   {input: 1.00,  output: 5.00}
+  claude-sonnet-4-6:           {input: 3.00,  output: 15.00}
+  claude-opus-4-8:             {input: 15.00, output: 75.00}
+  gpt-4o-mini:                 {input: 0.15,  output: 0.60}
+  gpt-4o:                      {input: 2.50,  output: 10.00}
+  mock:                        {input: 0.00,  output: 0.00}

@@ -1,0 +1,12 @@
+# Core
+anthropic>=0.52
+openai>=1.40
+pyyaml>=6.0
+numpy>=1.26
+pandas>=2.0
+scipy>=1.11
+matplotlib>=3.7
+
+# Optional (analyze.py degrades gracefully if absent)
+statsmodels>=0.14   # mixed-effects logistic regression
+tiktoken>=0.7       # offline token estimation for context construction
