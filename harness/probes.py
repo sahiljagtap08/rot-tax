@@ -22,8 +22,9 @@ def make_probes(sub: Substrate) -> List[Probe]:
     tgt = sub.probe_a_target
     return [
         Probe("A_retrieval", "A",
-              f"What sentinel value does the function `{tgt.name}` in `{tgt.file}` return? "
-              f"Answer with just the sentinel token."),
+              f"Based on the source of `{tgt.name}` shown earlier in this session "
+              f"(in `{tgt.file}`), what exact sentinel string does it return? "
+              f"Answer with only the sentinel token (the NX... string)."),
         Probe("B_state", "B",
               "List every file recorded in the edit log and its most recent change. "
               "Use only the authoritative edit log, not abandoned/considered edits."),

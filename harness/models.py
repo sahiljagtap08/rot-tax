@@ -106,10 +106,20 @@ class ModelClient:
         return ModelResponse(text, resp.usage.input_tokens, resp.usage.output_tokens,
                              "anthropic", self.model)
 
+    @staticmethod
+    def _openai_reasoning(model: str) -> bool:
+        return model.startswith(("gpt-5", "o1", "o3", "o4"))
+
     def _complete_openai(self, messages, system, max_tokens, temperature) -> ModelResponse:
         msgs = ([{"role": "system", "content": system}] if system else []) + messages
-        resp = self._client.chat.completions.create(
-            model=self.model, max_tokens=max_tokens, messages=msgs, temperature=temperature)
+        if self._openai_reasoning(self.model):
+            # gpt-5.x / o-series: require max_completion_tokens, reject temperature override.
+            # Headroom for reasoning tokens so a real answer survives the budget.
+            resp = self._client.chat.completions.create(
+                model=self.model, messages=msgs, max_completion_tokens=max(4000, max_tokens))
+        else:
+            resp = self._client.chat.completions.create(
+                model=self.model, messages=msgs, max_tokens=max_tokens, temperature=temperature)
         text = resp.choices[0].message.content or ""
         u = resp.usage
         return ModelResponse(text, u.prompt_tokens, u.completion_tokens, "openai", self.model)

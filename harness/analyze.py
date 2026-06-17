@@ -166,7 +166,8 @@ def main():
         print("=" * 64)
     df = load(path)
     df_present = df[df["needle_mode"] == "present"]
-    out_png = REPO_ROOT / "results" / ("rot_curve.MOCK.png" if is_mock else "rot_curve.png")
+    stem = path.stem.replace("rot_raw", "rot_curve")  # per-model PNG, no overwrite
+    out_png = REPO_ROOT / "results" / f"{stem}.png"
     plot_position_surface(df_present, out_png, is_mock)
     identification_readout(df_present)
     controls_readout(df)

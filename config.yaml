@@ -3,19 +3,19 @@
 
 run:
   seed: 42
-  budget_usd_ceiling: 200.0         # hard ABORT if exceeded (robustness pilot)
+  budget_usd_ceiling: 1000.0        # default ceiling; run_pilot.sh sets per-arm --budget
   max_parallel_sessions: 6
   provider: openai                  # mock | anthropic | openai  (mock needs no key, no money)
 
 models:
   # model under study (the "agent" whose context we rot). Pin a DATED id for real runs.
-  agent_model: gpt-4o-mini          # cheap workhorse; gpt-4o is the confirmation subset
+  agent_model: gpt-5.4-mini         # depth-track backbone; frontier arms set via --model
   # v0.2: Probe A is mechanical (nonce exact-match), so NO scorer model is needed.
 
 experiment:
-  # Capped at 120k: GPT-4o / GPT-4o-mini have a 128k context limit. Claude (200k+) can
-  # extend to 150k via --levels for a cross-provider robustness arm.
-  probe_milestones_tokens: [5000, 20000, 50000, 90000, 120000]
+  # gpt-5.x and Claude all accept >=150k context (verified 2026-06-17), so levels are
+  # unified across providers for a clean cross-model comparison.
+  probe_milestones_tokens: [5000, 20000, 50000, 90000, 150000]
   probe_types: [A_retrieval, B_state, C_instruction]
   needle_positions: [front, mid, end]   # 'end' (distance~0) is the identification arm
   needle_modes: [present, absent, counterfactual]   # absent/counterfactual = controls (Probe A)
@@ -29,12 +29,18 @@ substrate:
   n_files: 6
   n_functions_per_file: 5
 
-# Prices in USD per 1,000,000 tokens. VERIFY against current provider pricing
-# before reporting any dollar figure. Cost tracker uses these values verbatim.
+# Prices in USD per 1,000,000 tokens. VERIFIED 2026-06-17 against developers.openai.com
+# and platform.claude.com pricing pages. Re-verify before reporting any dollar figure.
 pricing:
-  claude-haiku-4-5-20251001:   {input: 1.00,  output: 5.00}
-  claude-sonnet-4-6:           {input: 3.00,  output: 15.00}
-  claude-opus-4-8:             {input: 15.00, output: 75.00}
-  gpt-4o-mini:                 {input: 0.15,  output: 0.60}
+  # OpenAI (verified 2026-06-17)
+  gpt-5.5:                     {input: 5.00,  output: 30.00}
+  gpt-5.4:                     {input: 2.50,  output: 15.00}
+  gpt-5.4-mini:                {input: 0.75,  output: 4.50}
+  gpt-5.4-nano:                {input: 0.20,  output: 1.25}
   gpt-4o:                      {input: 2.50,  output: 10.00}
+  gpt-4o-mini:                 {input: 0.15,  output: 0.60}
+  # Anthropic (verified 2026-06-17)
+  claude-opus-4-8:             {input: 5.00,  output: 25.00}
+  claude-sonnet-4-6:           {input: 3.00,  output: 15.00}
+  claude-haiku-4-5-20251001:   {input: 1.00,  output: 5.00}
   mock:                        {input: 0.00,  output: 0.00}

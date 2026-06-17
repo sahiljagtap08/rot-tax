@@ -47,17 +47,19 @@ def _positions(kind, quick, positions_override):
     return (["front", "end"] if quick else ["front", "mid", "end"])
 
 
-def _needle_modes(kind, quick, primary_only):
+def _needle_modes(kind, quick, primary_only, modes_override):
     if kind != "A" or primary_only:
         return ["present"]
+    if modes_override:
+        return modes_override
     return (["present", "absent"] if quick else ["present", "absent", "counterfactual"])
 
 
 def build_cells(cfg, quick, *, reps=None, items=None, primary_only=False,
-                levels=None, positions=None):
+                levels=None, positions=None, comps=None, modes=None):
     items = items if items is not None else cfg_mod.get(cfg, "experiment.num_substrate_items", 10)
     levels = levels or cfg_mod.get(cfg, "experiment.probe_milestones_tokens")
-    comps = ["diverse"] if primary_only else cfg_mod.get(cfg, "experiment.compositions")
+    comps = comps or (["diverse"] if primary_only else cfg_mod.get(cfg, "experiment.compositions"))
     reps = reps if reps is not None else cfg_mod.get(cfg, "experiment.repetitions", 8)
     if quick:
         items, levels, comps, reps = 2, [5000, 50000, 120000], ["diverse"], 2
@@ -70,7 +72,7 @@ def build_cells(cfg, quick, *, reps=None, items=None, primary_only=False,
         assert_invariants(sub)
         for probe in make_probes(sub):
             for pos in _positions(probe.kind, quick, positions):
-                for nm in _needle_modes(probe.kind, quick, primary_only):
+                for nm in _needle_modes(probe.kind, quick, primary_only, modes):
                     for comp in comps:
                         for T in levels:
                             for rep in range(reps):
@@ -144,6 +146,8 @@ def main():
                     help="diverse composition + present needle only (cheap confirmation subset)")
     ap.add_argument("--levels", default=None, help="comma list of token milestones to override")
     ap.add_argument("--positions", default=None, help="comma list, e.g. front,end")
+    ap.add_argument("--comps", default=None, help="comma list of compositions, e.g. diverse")
+    ap.add_argument("--modes", default=None, help="comma list of Probe-A needle modes, e.g. present,absent")
     ap.add_argument("--estimate", action="store_true", help="dry cost estimate, no API calls")
     ap.add_argument("--budget", type=float, default=None, help="per-run USD ceiling override")
     ap.add_argument("--shuffle", action="store_true",
@@ -160,8 +164,11 @@ def main():
 
     levels = [int(x) for x in args.levels.split(",")] if args.levels else None
     positions = args.positions.split(",") if args.positions else None
+    comps = args.comps.split(",") if args.comps else None
+    modes = args.modes.split(",") if args.modes else None
     cells = build_cells(cfg, args.quick, reps=args.reps, items=args.items,
-                        primary_only=args.primary_only, levels=levels, positions=positions)
+                        primary_only=args.primary_only, levels=levels, positions=positions,
+                        comps=comps, modes=modes)
     if args.shuffle:
         random.Random(cfg_mod.get(cfg, "run.seed", 42)).shuffle(cells)
     if args.limit:

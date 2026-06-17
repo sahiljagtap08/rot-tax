@@ -93,11 +93,14 @@ def build_needle(sub: Substrate, probe_kind: str, needle_mode: str) -> str:
     tgt = sub.probe_a_target
     if probe_kind == "A":
         if needle_mode == "counterfactual":
-            return (f"## Authoritative note\nEarlier I assumed `{tgt.name}` returned "
-                    f"`{sub.nonce_stale}`. Correction after re-reading the source: `{tgt.name}` "
-                    f"in `{tgt.file}` returns the sentinel `{sub.nonce_counterfactual}`.\n")
-        return (f"## Authoritative note\n`{tgt.name}` in `{tgt.file}` returns the sentinel "
-                f"value `{sub.nonce_present}`.\n")
+            return (f"I first read `{tgt.file}`:\n```python\ndef {tgt.name}(x, y):\n"
+                    f"    return \"{sub.nonce_stale}\"\n```\n"
+                    f"After a refactor I re-read `{tgt.file}`; it now returns a new sentinel. "
+                    f"This is the current, authoritative source:\n```python\n"
+                    f"def {tgt.name}(x, y):\n    return \"{sub.nonce_counterfactual}\"\n```\n")
+        return (f"I opened `{tgt.file}` and read the function in full:\n```python\n"
+                f"def {tgt.name}(x, y):\n    # returns the session sentinel\n"
+                f"    return \"{sub.nonce_present}\"\n```\n")
     if probe_kind == "B":
         lines = "\n".join(f"  - {f}: {c}" for f, c in sub.edit_log)
         return ("## Edit log (most recent change per file)\n" + lines + "\n")
