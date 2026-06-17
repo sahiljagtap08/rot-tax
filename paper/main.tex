@@ -532,19 +532,30 @@ paper analyzes.
 \section{Results}
 \label{sec:results}
 
-We logged \textbf{12{,}582} trials in total, of which \textbf{7{,}338} were
-present-needle trials; only \textbf{48} present-needle trials failed. The
-headline result is a rigorous \emph{null}: on controlled, difficulty-invariant
-probes, frontier models show no measurable context rot up to 150k tokens
-(Figure~\ref{fig:summary}). We report present-needle accuracy per model
-$\times$ probe for the easy and hard probe sets (Tables~\ref{tab:easy} and
-\ref{tab:hard}), the single non-null cell broken out by context length
-(Table~\ref{tab:b2}), and the validating controls.
+The registered grid (easy and hard probe sets, four models) comprises
+\textbf{12{,}570} trials, of which \textbf{7{,}330} are present-needle trials;
+\textbf{48} of those failed. Overall present-needle accuracy is
+\textbf{0.9935}, which places the exact one-sided $95\%$ Clopper--Pearson upper
+bound on the failure rate at \textbf{0.87\%}. We find no measurable
+length-driven degradation on our controlled, synthetic, mechanically-scored
+probes, for the models tested, up to 150k tokens, with a single exception
+described below (Figure~\ref{fig:summary}). We report present-needle accuracy
+per model $\times$ probe for the easy and hard probe sets
+(Tables~\ref{tab:easy} and \ref{tab:hard}), the one sub-$1.000$ cell broken out
+by context length (Table~\ref{tab:b2}), and the validating controls.
 
-The four registered arms are \texttt{gpt-5.5}, \texttt{gpt-5.4},
-\texttt{gpt-5.4-mini}, and \texttt{claude-sonnet-4-6}; the
-\texttt{claude-haiku-4-5} row ($n=8$) is a spot-check, not a registered arm,
-and is reported only for completeness.
+The four models are \texttt{gpt-5.5}, \texttt{gpt-5.4}, \texttt{gpt-5.4-mini},
+and \texttt{claude-sonnet-4-6}. The precision of the report is uneven across
+them, and we are explicit about which arms support which inferences. The
+tightly-powered evidence is on the depth model \texttt{gpt-5.4-mini}, with up
+to $432$ present-needle trials per condition (pooled present-needle
+$n=6030$); at that cell the minimum per-condition accuracy drop detectable at
+$80\%$ power is $0.0037$, so it rules out per-condition degradation larger than
+about $0.4\%$. The frontier-tier arms \texttt{gpt-5.5}, \texttt{gpt-5.4}, and
+\texttt{claude-sonnet-4-6} (pooled present-needle $n=720$, $600$, and $170$
+respectively) are breadth confirmation across providers and model families,
+not tightly-powered per-condition nulls: some cells are as small as $n=2$, so
+on those arms we can exclude only large per-condition drops, not small ones.
 
 \begin{figure}
   \includegraphics[width=\linewidth]{figs/fig_summary.png}
@@ -612,27 +623,39 @@ and is reported only for completeness.
 \end{table}
 
 \paragraph{Controls.}
-The controls confirm the probes are genuine and not trivially leaked. The
+The controls indicate the probes are genuine and not trivially leaked. The
 no-needle (absent) control sat at accuracy \textbf{0.000} over \textbf{3{,}084}
 trials, matching the expected chance level ($\approx 0$) for nonce retrieval:
-the probe genuinely requires the in-context information and cannot be answered
-from filler or parametric memory. The counterfactual-needle control reached
-accuracy \textbf{1.000} over \textbf{2{,}160} trials, the expected value
-($\approx 1.0$): models report the \emph{in-context} value, confirming genuine
-in-context use rather than recall.
+the probe requires the in-context information and is not answerable from filler
+or parametric memory. The counterfactual-needle control reached accuracy
+\textbf{1.000} over \textbf{2{,}160} trials, the expected value
+($\approx 1.0$): models report the \emph{in-context} value, consistent with
+genuine in-context use rather than recall. These controls bound leakage and
+recall confounds; they do not, on their own, disentangle position, distance,
+and filler composition, which the design controls only partially (see below).
 
 \paragraph{Summary of findings.}
-We state the result plainly. The identification test
-(position$=$end) is flat: there is no rot signal at end, and accuracy is
-likewise flat across front/mid and across $T$. Frontier-tier models
-(\texttt{gpt-5.5}, \texttt{claude-sonnet-4-6}) score
-$1.000$ everywhere on both the easy and hard probe sets ---
-including latent 2-hop retrieval, the exact stressor of
-NoLiMa~\cite{modarressi2025nolima}. The \emph{only} crack is HARD~B2
-aggregation on \texttt{gpt-5.4-mini}, the smallest model, which dips from
-$0.931$ at 5k to $0.833$ at 150k; it is absent on the frontier-tier models
-\texttt{gpt-5.5} and \texttt{claude-sonnet-4-6}. This is a controlled,
-cross-provider null for context rot up to 150k, not a finding of rot.
+Across the registered grid, present-needle accuracy is flat at $1.000$ across
+context length ($5\text{k}\!\to\!150\text{k}$) and needle position
+(front/mid/end) for every model on every probe, with a single exception. The
+\texttt{end} arm, where the needle sits adjacent to the probe at every length,
+is the cleanest separation of length from position available in the design, and
+it too is flat; on the frontier-tier arms this holds on both the easy and hard
+probe sets, including the latent 2-hop retrieval that NoLiMa identifies as a
+stressor~\cite{modarressi2025nolima}, though at the per-condition sample sizes
+on those arms only large drops can be excluded. The one sub-$1.000$ cell is
+hard aggregation (B2) on the depth model \texttt{gpt-5.4-mini}: it scores
+$0.943$ overall on the hard set and declines from $0.931$ at 5k to $0.833$ at
+150k, while \texttt{gpt-5.5} and \texttt{claude-sonnet-4-6} hold at $1.000$ at
+every length. Because part of this gap is present already at 5k, it is
+consistent with a capacity limit on the smallest model interacting mildly with
+length, rather than a length-driven collapse. We therefore read the grid as
+showing no measurable length-driven degradation on these controlled, synthetic,
+mechanically-scored probes, for the models tested, up to 150k tokens, apart
+from that one aggregation cell. On these tasks raw context volume did not by
+itself produce degradation in the regime we swept; we cannot determine its
+contribution in real multi-turn agentic workflows, where position, distance,
+and task and error dynamics co-vary with length.
 
 \paragraph{Deeper-latent robustness (closing the 2-hop limitation).}
 Because the hard retrieval probe is only 2-hop, we ran a focused $340$-trial
