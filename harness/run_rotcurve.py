@@ -128,7 +128,8 @@ def run_one(cell, agent_client, cost, logger, model_version):
         "passed": bool(passed), "score_detail": detail, "signals": sig,
         "content_hash": trial.content_hash, "provider": agent_client.provider,
         "model": agent_client.model, "model_version": model_version, "tokenizer": TOKENIZER,
-        "answer_preview": (resp.text or "")[:200], "ts": time.time(),
+        "answer": (resp.text or ""), "answer_preview": (resp.text or "")[:200],
+        "ts": time.time(),
     }
 
 

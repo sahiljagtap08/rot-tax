@@ -29,6 +29,14 @@ def load(path: Path) -> pd.DataFrame:
     df = pd.DataFrame(rows)
     if df.empty:
         raise SystemExit(f"No records in {path}. Run the experiment first.")
+    # Always apply the CURRENT validated scorer for Probe C (mechanical refusal detection)
+    # rather than trusting a possibly-stale logged label. C answers are re-scored from the
+    # logged answer text. (Probes A/B are exact-match and unaffected.)
+    ans_col = "answer" if "answer" in df.columns else "answer_preview"
+    if ans_col in df.columns and "probe_kind" in df.columns:
+        from .scorers import score_C
+        cmask = df["probe_kind"] == "C"
+        df.loc[cmask, "passed"] = df.loc[cmask, ans_col].apply(lambda a: score_C(a)[0])
     sig = pd.json_normalize(df["signals"]).add_prefix("sig.")
     return pd.concat([df.drop(columns=["signals"]), sig], axis=1)
 
@@ -124,6 +132,11 @@ def signal_validation(df):
     from scipy import stats
     d = df[df["needle_mode"] == "present"].copy()
     y = (~d["passed"].astype(bool)).astype(float).to_numpy()   # failure
+    if y.sum() < 5 or y.sum() > len(y) - 5:
+        print("\n----- SIGNAL VALIDATION (C1) -----")
+        print(f"  {int(y.sum())}/{len(y)} present-mode failures — too few to validate signals "
+              f"(nothing to predict; this is a NULL for C1).")
+        return None
     z = np.log(d["target_tokens"].astype(float).to_numpy())    # control variable log(T)
     sig_cols = [c for c in d.columns if c.startswith("sig.")]
     rows = []
