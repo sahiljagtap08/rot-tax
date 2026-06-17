@@ -131,25 +131,30 @@ def main():
                 cell = sub[(sub["model"] == m) & (sub["probe_id"] == p) & (sub["target_tokens"] == t)]
                 if len(cell):
                     M[i, j] = cell["passed"].mean()
-        im = ax.imshow(M, cmap="RdYlGn", vmin=0.5, vmax=1.0, aspect="auto")
+        cmap = matplotlib.cm.get_cmap("RdYlGn").copy()
+        cmap.set_bad("#dcdcdc")  # not-run cells render gray, distinct from any low score
+        im = ax.imshow(np.ma.masked_invalid(M), cmap=cmap, vmin=0.5, vmax=1.0, aspect="auto")
         ax.set_xticks(range(len(cols))); ax.set_xticklabels(col_labels, fontsize=7)
         ax.set_yticks(range(len(models))); ax.set_yticklabels(models, fontsize=8)
         for i in range(len(models)):
             for j in range(len(cols)):
                 v = M[i, j]
-                if not np.isnan(v):
+                if np.isnan(v):
+                    ax.text(j, i, "n/a", ha="center", va="center", fontsize=6, color="#777")
+                else:
                     ax.text(j, i, f"{v:.2f}", ha="center", va="center", fontsize=6,
                             color="black" if v > 0.7 else "white")
-        # probe-group separators + labels
         for k in range(1, len(PROBES)):
             ax.axvline(k * len(Ts) - 0.5, color="black", lw=1.2)
         for k, p in enumerate(PROBES):
             ax.text(k * len(Ts) + len(Ts) / 2 - 0.5, -0.75, PRETTY[p], ha="center", fontsize=9)
-        ax.set_title(f"{ps.upper()} probes — present-needle accuracy (rows=model, cols=probe @ context length)",
-                     fontsize=9, pad=18)
-    fig.suptitle("The Rot Tax is near zero: a wall of 1.00. Every model x probe x length cell is "
-                 "shown.\nThe ONLY departure across 7,338 trials is gpt-5.4-mini on hard "
-                 "aggregation (0.93 -> 0.83).", fontsize=11)
+        extra = "  (A-only: 3-hop latent + decoy; B/C not run)" if ps == "deep" else ""
+        ax.set_title(f"{ps.upper()} probes — present-needle accuracy "
+                     f"(rows=model, cols=probe @ context length){extra}", fontsize=9, pad=18)
+    fig.suptitle("Context rot is near zero: a wall of 1.00. Across the registered grid (7,338 "
+                 "present-needle trials) the ONLY departure is gpt-5.4-mini on hard aggregation "
+                 "(0.93->0.83).\nDEEP row is an A-only 3-hop+decoy robustness add-on (gray = not run).",
+                 fontsize=10)
     fig.tight_layout(rect=[0, 0, 1, 0.93])
     fig.savefig(RES / "fig_summary.png", dpi=150)
     print(f"wrote {RES/'fig_summary.png'}")
