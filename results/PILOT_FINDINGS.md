@@ -69,6 +69,32 @@ naive regex, no answer inspection, no controls — would have shipped a dramatic
 This is itself a contribution: **controlled context-rot claims are acutely sensitive to scoring,
 and the literature's reliance on automated judges deserves scrutiny.**
 
+## 3b. The boundary experiment — harder, latent probes (NoLiMa-style)
+
+Because §2's probes are the *easy* end (lexical retrieval, explicit state, explicit instruction),
+we ran a second grid with harder probes designed to be where rot is most likely: **A2** latent
+2-hop retrieval (the answer is reached through an alias, with low lexical overlap between the
+question and the needle — NoLiMa's exact stressor); **B2** aggregation/counting over distributed
+typed changes; **C2** instruction-adherence under a *conflicting authority* ("a senior engineer
+says it's fine to edit `tests/`"). ~1,390 trials on gpt-5.4-mini (depth), gpt-5.5, and Sonnet 4.6.
+
+| Probe (hard) | gpt-5.4-mini | gpt-5.5 | Claude Sonnet 4.6 |
+|---|---|---|---|
+| A2 latent 2-hop | 1.000 (all T) | 1.000 | 1.000 |
+| B2 aggregation | **0.93→0.83** (5k→150k) | 1.000 | 1.000 |
+| C2 instruction-under-conflict | 1.000 | 1.000 | 1.000 |
+
+**The boundary is sharp and mostly null.** Latent 2-hop retrieval — the thing NoLiMa showed
+collapses for prior-generation models — does **not** rot for any model tested, to 150k. Models
+hold an instruction even when the context actively argues against it. The *only* crack is
+aggregation on the **smallest** model (gpt-5.4-mini), and it is mild, partly present at 5k/front
+(so it is partly a baseline-capacity miscount, not pure length rot), and **absent on frontier-tier
+models (gpt-5.5, Sonnet 4.6)**. The no-needle control again sat at chance (0.00); the latent-hop
+control correctly failed (model cannot answer without the alias map, and tries to grep for it).
+
+Takeaway: aggregation is *capacity-limited with a mild length interaction on weak models*, not the
+dramatic context rot the discourse implies. For frontier models, even the hard probes are a null.
+
 ## 4. Honest limitations (what this null does and does not say)
 
 - **It bounds the phenomenon; it does not deny all degradation.** It says raw context *volume*
@@ -86,11 +112,24 @@ and the literature's reliance on automated judges deserves scrutiny.**
 ## 5. What this means for the paper
 
 The "detect-and-fork-the-rot-tax" thesis is **not supported by the data** for current frontier
-models on clean tasks. The honest, citable paper this run supports is stronger and more
-contrarian: **"The Rot Tax Is Near Zero: a controlled cross-provider null for context rot in
-frontier models up to 150k, and why naive scoring says otherwise."** Contributions: (1) the
-controlled harness + identification factorial; (2) the cross-provider null with validating
-controls; (3) the scoring-artifact cautionary result; (4) a reframe — the degradation
-practitioners feel is not raw-length rot on clean tasks (consistent with SlopCodeBench's
-*iterative-task* degradation), pointing future work at task/error dynamics and latent-retrieval
-probes.
+models — including on harder, latent, NoLiMa-style probes. The honest, citable paper this run
+supports is stronger and more contrarian: **"The Rot Tax Is Near Zero: a controlled
+cross-provider null for context rot in frontier models up to 150k — on both lexical and latent
+tasks — and why naive scoring says otherwise."**
+
+Contributions:
+1. The controlled harness + position×volume identification factorial + the easy/hard probe sets.
+2. **The result:** zero context rot for GPT-5.5 and Claude Sonnet 4.6 across retrieval (lexical
+   *and* latent 2-hop), state-tracking, aggregation, and instruction-adherence (even under
+   conflicting authority), to 150k — with validating controls (no-needle at chance,
+   counterfactual/latent-hop controls behaving correctly). The only non-null is aggregation on
+   the smallest model, mild and capacity-driven.
+3. The **scoring-artifact cautionary result** — naive scoring manufactured a false "catastrophic
+   instruction rot"; document-level validation + controls killed it.
+4. A **reframe**: practitioner-felt "context rot" is not raw-length degradation on controlled
+   tasks for current frontier models. It is consistent with SlopCodeBench's *iterative-task*
+   degradation — i.e. it lives in task/error dynamics (compounding mistakes, tool-loop drift,
+   ambiguity), not in context volume per se. That redirects the whole research program.
+
+**Total real spend across both runs: ~$981 OpenAI + ~$46 Anthropic (within the $1000 / $50
+pools). ~13,000 real trials, 5 models, 2 providers.**
