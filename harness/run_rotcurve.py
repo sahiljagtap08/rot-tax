@@ -26,7 +26,7 @@ from .logging_utils import StructuredLogger
 from .models import ModelClient
 from .context_builder import generate_substrate, assemble_trial, assert_invariants
 from .probes import make_probes, gold_and_mockgold
-from .scorers import score_A, score_B, score_C
+from .scorers import score_A, score_B, score_C, score_count
 from .signals import extract_signals
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -56,7 +56,7 @@ def _needle_modes(kind, quick, primary_only, modes_override):
 
 
 def build_cells(cfg, quick, *, reps=None, items=None, primary_only=False,
-                levels=None, positions=None, comps=None, modes=None):
+                levels=None, positions=None, comps=None, modes=None, hard=False):
     items = items if items is not None else cfg_mod.get(cfg, "experiment.num_substrate_items", 10)
     levels = levels or cfg_mod.get(cfg, "experiment.probe_milestones_tokens")
     comps = comps or (["diverse"] if primary_only else cfg_mod.get(cfg, "experiment.compositions"))
@@ -70,13 +70,14 @@ def build_cells(cfg, quick, *, reps=None, items=None, primary_only=False,
     for item in range(items):
         sub = generate_substrate(item, seed0, nf, ng)
         assert_invariants(sub)
-        for probe in make_probes(sub):
+        for probe in make_probes(sub, hard=hard):
             for pos in _positions(probe.kind, quick, positions):
                 for nm in _needle_modes(probe.kind, quick, primary_only, modes):
                     for comp in comps:
                         for T in levels:
                             for rep in range(reps):
-                                cells.append((sub, probe, T, pos, comp, nm, seed0 + rep, item, rep))
+                                cells.append((sub, probe, T, pos, comp, nm, seed0 + rep,
+                                              item, rep, hard))
     return cells
 
 
@@ -84,11 +85,11 @@ def estimate_cost(cells, model, pricing):
     """Dry cost estimate (no API). Sizes input tokens from a representative trial per
     (probe_kind, T, needle_mode) cell shape and assumes ~400 output tokens/call."""
     cache, total_in = {}, 0
-    for (sub, probe, T, pos, comp, nm, seed, item, rep) in cells:
-        key = (probe.kind, T, nm)
+    for (sub, probe, T, pos, comp, nm, seed, item, rep, hard) in cells:
+        key = (probe.kind, T, nm, hard)
         if key not in cache:
             tr = assemble_trial(sub, probe.kind, probe.text, T, position=pos, composition=comp,
-                                needle_mode=nm, content_seed=seed)
+                                needle_mode=nm, content_seed=seed, hard=hard)
             cache[key] = tr.est_input_tokens
         total_in += cache[key]
     total_out = 400 * len(cells)
@@ -100,11 +101,12 @@ def estimate_cost(cells, model, pricing):
 
 
 def run_one(cell, agent_client, cost, logger, model_version):
-    sub, probe, T, pos, comp, nm, seed, item, rep = cell
-    sid = f"i{item}-L{T}-{pos}-{nm}-{comp}-s{seed}-{probe.probe_id}"
-    gold, mock_gold = gold_and_mockgold(sub, probe, nm)
+    sub, probe, T, pos, comp, nm, seed, item, rep, hard = cell
+    ps = "hard" if hard else "easy"
+    sid = f"{ps}-i{item}-L{T}-{pos}-{nm}-{comp}-s{seed}-{probe.probe_id}"
+    gold, mock_gold = gold_and_mockgold(sub, probe, nm, hard)
     trial = assemble_trial(sub, probe.kind, probe.text, T, position=pos, composition=comp,
-                           needle_mode=nm, content_seed=seed)
+                           needle_mode=nm, content_seed=seed, hard=hard)
     mm = {"probe_type": probe.probe_id, "gold": mock_gold, "target_tokens": T, "seed": seed,
           "item": item, "position": pos, "needle_mode": nm}
     resp = agent_client.complete(trial.messages, system=trial.system, max_tokens=400,
@@ -115,13 +117,13 @@ def run_one(cell, agent_client, cost, logger, model_version):
     if probe.kind == "A":
         passed, detail = score_A(resp.text, gold)
     elif probe.kind == "B":
-        passed, detail = score_B(resp.text, gold)
+        passed, detail = (score_count(resp.text, gold) if hard else score_B(resp.text, gold))
     else:
         passed, detail = score_C(resp.text)
 
     sig = extract_signals(trial.filler_turns, resp.text, resp.input_tokens)
     return {
-        "session_id": sid, "item": item, "rep": rep, "content_seed": seed,
+        "session_id": sid, "item": item, "rep": rep, "content_seed": seed, "probeset": ps,
         "probe_id": probe.probe_id, "probe_kind": probe.kind, "target_tokens": T,
         "needle_position": pos, "composition": comp, "needle_mode": nm,
         "input_tokens_actual": resp.input_tokens, "output_tokens": resp.output_tokens,
@@ -151,6 +153,8 @@ def main():
     ap.add_argument("--modes", default=None, help="comma list of Probe-A needle modes, e.g. present,absent")
     ap.add_argument("--estimate", action="store_true", help="dry cost estimate, no API calls")
     ap.add_argument("--budget", type=float, default=None, help="per-run USD ceiling override")
+    ap.add_argument("--probeset", default="easy", choices=["easy", "hard"],
+                    help="easy=lexical/explicit probes; hard=latent 2-hop/aggregation/conflict")
     ap.add_argument("--shuffle", action="store_true",
                     help="randomize collection order (recommended for real runs; DESIGN §4)")
     args = ap.parse_args()
@@ -167,9 +171,10 @@ def main():
     positions = args.positions.split(",") if args.positions else None
     comps = args.comps.split(",") if args.comps else None
     modes = args.modes.split(",") if args.modes else None
+    hard = args.probeset == "hard"
     cells = build_cells(cfg, args.quick, reps=args.reps, items=args.items,
                         primary_only=args.primary_only, levels=levels, positions=positions,
-                        comps=comps, modes=modes)
+                        comps=comps, modes=modes, hard=hard)
     if args.shuffle:
         random.Random(cfg_mod.get(cfg, "run.seed", 42)).shuffle(cells)
     if args.limit:
@@ -185,6 +190,7 @@ def main():
         return
 
     slug = "" if is_mock else "__" + agent_model.replace("/", "-").replace(":", "-").replace(".", "_")
+    slug += "__hard" if hard else ""
     suffix = ".MOCK" if is_mock else ""
     out_path = REPO_ROOT / "results" / f"rot_raw{suffix}{slug}.jsonl"
     spend_path = REPO_ROOT / "logs" / f"spend{suffix}{slug}.jsonl"

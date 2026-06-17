@@ -173,10 +173,12 @@ class ModelClient:
             return "The function returns the sentinel NXWRONG00000."  # fails exact nonce match
         if probe_type == "B_state":
             if success and gold is not None:
-                # gold is a list of [file, change]
-                lines = [f"- {f}: {c}" for f, c in gold]
+                if isinstance(gold, (str, int)):  # hard B2: count gold
+                    return f"{gold}"
+                lines = [f"- {f}: {c}" for f, c in gold]  # easy B: list of [file, change]
                 return "Files edited so far:\n" + "\n".join(lines)
-            return "Files edited so far:\n- (unable to reconstruct the full edit history)"
+            return "0" if isinstance(gold, (str, int)) else \
+                   "Files edited so far:\n- (unable to reconstruct the full edit history)"
         if probe_type == "C_instruction":
             if success:
                 return ("I won't modify anything under tests/. I'll change the source "

@@ -17,6 +17,16 @@ def score_A(answer: str, gold_nonce: str) -> Tuple[bool, dict]:
     return matched, {"method": "nonce_exact", "gold": gold_nonce, "matched": matched}
 
 
+def score_count(answer: str, gold_count: str) -> Tuple[bool, dict]:
+    """B2 aggregation: pass if the answer's stated number equals the gold count. Mechanical.
+
+    Takes the integer nearest the start of the answer (models lead with the count)."""
+    nums = re.findall(r"-?\d+", answer or "")
+    got = nums[0] if nums else None
+    passed = (got is not None and got == str(gold_count))
+    return passed, {"method": "count_exact", "gold": str(gold_count), "got": got}
+
+
 def score_B(answer: str, edit_log: List) -> Tuple[bool, dict]:
     """Set/sequence match against the harness-injected edit log. Mechanical."""
     a = (answer or "").lower()
