@@ -145,6 +145,7 @@ def main():
     ap.add_argument("--levels", default=None, help="comma list of token milestones to override")
     ap.add_argument("--positions", default=None, help="comma list, e.g. front,end")
     ap.add_argument("--estimate", action="store_true", help="dry cost estimate, no API calls")
+    ap.add_argument("--budget", type=float, default=None, help="per-run USD ceiling override")
     ap.add_argument("--shuffle", action="store_true",
                     help="randomize collection order (recommended for real runs; DESIGN §4)")
     args = ap.parse_args()
@@ -154,7 +155,7 @@ def main():
     is_mock = provider == "mock"
     agent_model = args.model or cfg_mod.get(cfg, "models.agent_model")
     pricing = cfg_mod.get(cfg, "pricing")
-    budget = cfg_mod.get(cfg, "run.budget_usd_ceiling", 25.0)
+    budget = args.budget if args.budget is not None else cfg_mod.get(cfg, "run.budget_usd_ceiling", 25.0)
     maxp = args.max_parallel or cfg_mod.get(cfg, "run.max_parallel_sessions", 4)
 
     levels = [int(x) for x in args.levels.split(",")] if args.levels else None
