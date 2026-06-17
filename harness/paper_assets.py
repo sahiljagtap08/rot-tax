@@ -45,11 +45,12 @@ def main():
              "All accuracies are present-needle unless noted. Generated from logged trials with",
              "the validated scorer; do not hand-edit. Probe C re-scored at load time.\n"]
 
-    for ps in ["easy", "hard"]:
+    for ps in ["easy", "hard", "deep"]:
         sub = alldf[(alldf["probeset"] == ps) & (alldf["needle_mode"] == "present")]
         if sub.empty:
             continue
-        lines.append(f"\n## {ps.upper()} probes — present-needle accuracy (overall, across T/position)\n")
+        tag = {"deep": " (A-only: 3-hop latent + decoy / interference)"}.get(ps, "")
+        lines.append(f"\n## {ps.upper()} probes{tag} — present-needle accuracy (overall, across T/position)\n")
         lines.append("| model | " + " | ".join(PRETTY[p] for p in PROBES) + " | overall | n |")
         lines.append("|" + "---|" * (len(PROBES) + 3))
         for model in sorted(sub["model"].unique()):
@@ -83,13 +84,22 @@ def main():
         lines.append(f"- counterfactual-needle accuracy: **{cf['passed'].mean():.3f}** over "
                      f"{len(cf)} trials (expected ≈ 1.0 = uses in-context value).")
 
-    # Scale + the headline upper bound
-    pres_all = alldf[alldf["needle_mode"] == "present"]
-    nfail = int((~pres_all["passed"].astype(bool)).sum())
-    hi = _wilson_hi(pres_all["passed"].mean(), len(pres_all))
+    # Scale — registered grid (easy+hard) reported as the headline; deep is a robustness add-on.
+    reg = alldf[alldf["probeset"].isin(["easy", "hard"])]
+    deep = alldf[alldf["probeset"] == "deep"]
+    reg_p = reg[reg["needle_mode"] == "present"]
+    deep_p = deep[deep["needle_mode"] == "present"]
+    nfail = int((~reg_p["passed"].astype(bool)).sum())
     lines.append("\n## Scale\n")
-    lines.append(f"- total trials logged: **{len(alldf)}**; present-needle trials: "
-                 f"**{len(pres_all)}**; present-needle failures: **{nfail}**.")
+    lines.append(f"- registered grid (easy+hard): **{len(reg)}** trials, **{len(reg_p)}** "
+                 f"present-needle, **{nfail}** present-needle failures (overall present-needle "
+                 f"accuracy **{reg_p['passed'].mean():.4f}**).")
+    if len(deep):
+        df_nf = int((~deep_p['passed'].astype(bool)).sum())
+        lines.append(f"- deep robustness add-on (3-hop+decoy, A-only): **{len(deep)}** trials, "
+                     f"**{len(deep_p)}** present-needle, **{df_nf}** failures "
+                     f"(accuracy **{deep_p['passed'].mean():.4f}**).")
+    lines.append(f"- grand total logged: **{len(alldf)}** trials.")
     lines.append(f"- models: {', '.join(sorted(alldf['model'].unique()))}.")
     lines.append(f"- context lengths: {sorted(alldf['target_tokens'].unique())}; "
                  f"positions: {sorted(alldf['needle_position'].unique())}.")
@@ -110,9 +120,9 @@ def main():
     cols = [(p, t) for p in PROBES for t in Ts]
     col_labels = [f"{t//1000}k" for (_, t) in cols]
 
-    fig, axes = plt.subplots(2, 1, figsize=(14, 6.2),
-                             gridspec_kw={"height_ratios": [4, 3]})
-    for ax, ps in zip(axes, ["easy", "hard"]):
+    fig, axes = plt.subplots(3, 1, figsize=(14, 8.4),
+                             gridspec_kw={"height_ratios": [4, 3, 3]})
+    for ax, ps in zip(axes, ["easy", "hard", "deep"]):
         sub = alldf[(alldf["probeset"] == ps) & (alldf["needle_mode"] == "present")]
         models = [m for m in MAIN if m in set(sub["model"])]
         M = np.full((len(models), len(cols)), np.nan)

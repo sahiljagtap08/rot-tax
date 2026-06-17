@@ -25,7 +25,7 @@ Length-Driven Degradation in Frontier Models up to 150k Tokens}
 
 %% ===== abstract =====
 \begin{abstract}
-The prevailing narrative holds that long context degrades model quality---a ``context rot'' that erodes retrieval, state-tracking, and instruction-following as inputs grow~\cite{hong2025contextrot,liu2024lostmiddle,modarressi2025nolima}. We report a controlled, cross-provider \emph{null}: on a pre-registered fixed-needle/growing-haystack factorial that varies context volume against needle position, frontier-tier models exhibit no measurable context rot to 150{,}000 tokens, and even the smallest model we test shows at most a mild, single-probe slip. Across $12{,}582$ logged trials on five models and two providers, present-needle accuracy was $1.000$ at every context length and every position on lexical retrieval, a NoLiMa-style latent 2-hop probe, state-tracking, and instruction-adherence---even when an in-context authority actively argues against the rule. Overall present-needle accuracy was $0.9935$: of $7{,}338$ trials only $48$ failed, and \emph{every one} of those failures was a single model on a single probe---aggregation/counting on the \emph{smallest} model (gpt-5.4-mini, $0.943$ overall on hard probes; B2 accuracy $0.931 \to 0.833$ from 5k to 150k). The frontier-tier models gpt-5.5 and Claude Sonnet~4.6 hold $1.000$ across all lengths, so the dip reads as a capacity limit on the smallest model with a mild length interaction, not the broad volume-driven decay the folklore predicts. Validating controls confirm the probes are genuine: the no-needle control sits at chance ($0.000$ over $3{,}084$ trials), and the counterfactual-needle control returns the in-context value ($1.000$ over $2{,}160$ trials). We also report a cautionary scorer-artifact result: naive scoring (curly-apostrophe regex misses and refusals that quote the disallowed request) first manufactured an apparent ``catastrophic'' instruction-adherence collapse that vanished---to its true value of $1.000$---under document-level refusal detection with unit tests, underscoring that controlled context-rot claims are acutely sensitive to scoring and to reliance on automated judges~\cite{zheng2023judge}. We reframe accordingly: practitioner-felt degradation is not a function of raw context \emph{volume} on clean, explicit, lexically- or latently-cued tasks for current frontier models up to 150k; it is more consistent with iterative task/error dynamics---compounding mistakes, tool-loop drift, and ambiguity~\cite{orlanski2026slopcodebench}---than with context length per se. This bounds the phenomenon without denying all degradation: we do not test the far tail beyond 150k, and our probes are explicit by design; latent, non-lexical, and adversarially ambiguous settings remain the boundary for future work.
+The prevailing narrative holds that long context degrades model quality---a ``context rot'' that erodes retrieval, state-tracking, and instruction-following as inputs grow~\cite{hong2025contextrot,liu2024lostmiddle,modarressi2025nolima}. We report a controlled, cross-provider \emph{null}: on a pre-registered fixed-needle/growing-haystack factorial that varies context volume against needle position, frontier-tier models exhibit no measurable context rot to 150{,}000 tokens, and even the smallest model we test shows at most a mild, single-probe slip. Across $12{,}582$ logged trials on five models and two providers, present-needle accuracy was $1.000$ at every context length and every position on lexical retrieval, a NoLiMa-style latent 2-hop probe, state-tracking, and instruction-adherence---even when an in-context authority actively argues against the rule. Overall present-needle accuracy was $0.9935$: of $7{,}338$ trials only $48$ failed, and \emph{every one} of those failures was a single model on a single probe---aggregation/counting on the \emph{smallest} model (gpt-5.4-mini, $0.943$ overall on hard probes; B2 accuracy $0.931 \to 0.833$ from 5k to 150k). The frontier-tier models gpt-5.5 and Claude Sonnet~4.6 hold $1.000$ across all lengths, so the dip reads as a capacity limit on the smallest model with a mild length interaction, not the broad volume-driven decay the folklore predicts. A $340$-trial robustness extension to a $3$-hop latent retrieval chain with a competing decoy (interference) is likewise $1.000$ for all three models tested. Validating controls confirm the probes are genuine: the no-needle control sits at chance ($0.000$ over $3{,}084$ trials), and the counterfactual-needle control returns the in-context value ($1.000$ over $2{,}160$ trials). We also report a cautionary scorer-artifact result: naive scoring (curly-apostrophe regex misses and refusals that quote the disallowed request) first manufactured an apparent ``catastrophic'' instruction-adherence collapse that vanished---to its true value of $1.000$---under document-level refusal detection with unit tests, underscoring that controlled context-rot claims are acutely sensitive to scoring and to reliance on automated judges~\cite{zheng2023judge}. We reframe accordingly: practitioner-felt degradation is not a function of raw context \emph{volume} on clean, explicit, lexically- or latently-cued tasks for current frontier models up to 150k; it is more consistent with iterative task/error dynamics---compounding mistakes, tool-loop drift, and ambiguity~\cite{orlanski2026slopcodebench}---than with context length per se. This bounds the phenomenon without denying all degradation: we do not test the far tail beyond 150k, and our probes are explicit by design; latent, non-lexical, and adversarially ambiguous settings remain the boundary for future work.
 \end{abstract}
 
 %% ===== intro =====
@@ -420,6 +420,12 @@ likely:
     sharper than for probe A: with the alias map removed the hop cannot be completed, so a model
     that cannot answer from context fails (and may attempt to search/grep for the missing alias),
     which is the behavior the control is meant to expose.
+  \item \textbf{A3 (deep 3-hop latent retrieval with a decoy chain).} A harder robustness
+    extension to A2: the routing chain is lengthened to three hops and a \emph{competing decoy
+    chain} (a different store resolving to a different nonce) is added in context, so the model
+    must traverse the correct chain \emph{and} resist interference---NoLiMa's harshest
+    regime~\cite{modarressi2025nolima}. Scoring and the \texttt{absent} control are as in A2; A3
+    is run as a separate $340$-trial add-on (\S\ref{sec:results}).
   \item \textbf{B2 (aggregation/counting over typed changes).} Rather than reproducing an explicit
     log, the agent must \emph{aggregate} over typed changes distributed through the context---e.g.,
     count how many changes of a given type occurred across files---so the answer is a derived
@@ -628,6 +634,20 @@ $0.931$ at 5k to $0.833$ at 150k; it is absent on the frontier-tier models
 \texttt{gpt-5.5} and \texttt{claude-sonnet-4-6}. This is a controlled,
 cross-provider null for context rot up to 150k, not a finding of rot.
 
+\paragraph{Deeper-latent robustness (closing the 2-hop limitation).}
+Because the hard retrieval probe is only 2-hop, we ran a focused $340$-trial
+extension with a strictly harder latent probe: a $3$-hop routing chain
+(\textsf{datastore}$\to$\textsf{alias}$\to$\textsf{alias}$_2\to$\textsf{token})
+presented alongside a \emph{competing decoy chain} that resolves to a different
+token, so the model must follow the correct chain and resist interference---the
+regime NoLiMa identifies as harshest~\cite{modarressi2025nolima}. Across all three
+models tested (\texttt{gpt-5.4-mini}, \texttt{gpt-5.5}, \texttt{claude-sonnet-4-6}),
+present-needle accuracy was $1.000$ at every length to 150k, with the no-needle
+control again at chance ($0.000$); notably, even \texttt{gpt-5.4-mini}---the only
+model to slip anywhere---solves the deeper, distractor-laden retrieval perfectly.
+The null thus holds not just for shallow latent retrieval but for deeper,
+interference-laden latent retrieval as well.
+
 %% ===== discussion =====
 \section{Discussion}
 \label{sec:discussion}
@@ -701,8 +721,11 @@ constructions, not live multi-turn agents acting on real repositories; they isol
 the volume variable cleanly at the cost of the iterative dynamics that the reframe
 implicates. Second, we test up to $150$k tokens, not the far tail beyond it
 (e.g.\ the 1M-token regime), so the null is bounded to the lengths swept. Third, the
-latent retrieval probe is $2$-hop; deeper multi-hop and more adversarially ambiguous
-compositions remain untested and are the natural next stressor. Fourth, probe C is
+latent retrieval probe is shallow: we report a $340$-trial robustness extension to a
+$3$-hop routing chain with a competing decoy chain (interference; \S\ref{sec:results}),
+on which all three tested models hold $1.000$, but still deeper chains ($4$+ hops) and
+genuinely ambiguous or underspecified compositions remain untested and are the natural
+next stressor. Fourth, probe C is
 re-scored from logged answers at analysis time rather than judged live, which is a
 strength for auditability but means the reported instruction-adherence figure
 reflects the validated detector rather than any collection-time scorer. Fifth, the

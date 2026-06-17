@@ -22,6 +22,14 @@ the validated scorer; do not hand-edit. Probe C re-scored at load time.
 | gpt-5.4-mini | 1.000 | 0.867 | 1.000 | 0.943 | 840 |
 | gpt-5.5 | 1.000 | 1.000 | 1.000 | 1.000 | 100 |
 
+## DEEP probes (A-only: 3-hop latent + decoy / interference) — present-needle accuracy (overall, across T/position)
+
+| model | A retrieval | B state/agg | C instruction | overall | n |
+|---|---|---|---|---|---|
+| claude-sonnet-4-6 | 1.000 | — | — | 1.000 | 20 |
+| gpt-5.4-mini | 1.000 | — | — | 1.000 | 150 |
+| gpt-5.5 | 1.000 | — | — | 1.000 | 20 |
+
 ## HARD B2 aggregation accuracy by context length (the only non-null)
 
 | model | 5k | 20k | 50k | 90k | 150k |
@@ -32,11 +40,13 @@ the validated scorer; do not hand-edit. Probe C re-scored at load time.
 
 ## Controls
 
-- no-needle (absent) accuracy: **0.000** over 3084 trials (expected ≈ chance ≈ 0 for nonce retrieval).
+- no-needle (absent) accuracy: **0.000** over 3234 trials (expected ≈ chance ≈ 0 for nonce retrieval).
 - counterfactual-needle accuracy: **1.000** over 2160 trials (expected ≈ 1.0 = uses in-context value).
 
 ## Scale
 
-- total trials logged: **12582**; present-needle trials: **7338**; present-needle failures: **48**.
+- registered grid (easy+hard): **12582** trials, **7338** present-needle, **48** present-needle failures (overall present-needle accuracy **0.9935**).
+- deep robustness add-on (3-hop+decoy, A-only): **340** trials, **190** present-needle, **0** failures (accuracy **1.0000**).
+- grand total logged: **12922** trials.
 - models: claude-haiku-4-5-20251001, claude-sonnet-4-6, gpt-5.4, gpt-5.4-mini, gpt-5.5.
 - context lengths: [5000, 20000, 50000, 90000, 120000, 150000]; positions: ['end', 'front', 'mid', 'na'].
