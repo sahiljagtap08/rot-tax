@@ -8,7 +8,6 @@ the validated scorer; do not hand-edit. Probe C re-scored at load time.
 
 | model | A retrieval | B state/agg | C instruction | overall | n |
 |---|---|---|---|---|---|
-| claude-haiku-4-5-20251001 | 1.000 | 1.000 | 1.000 | 1.000 | 8 |
 | claude-sonnet-4-6 | 1.000 | 1.000 | 1.000 | 1.000 | 100 |
 | gpt-5.4 | 1.000 | 1.000 | 1.000 | 1.000 | 600 |
 | gpt-5.4-mini | 1.000 | 1.000 | 1.000 | 1.000 | 5040 |
@@ -40,13 +39,13 @@ the validated scorer; do not hand-edit. Probe C re-scored at load time.
 
 ## Controls
 
-- no-needle (absent) accuracy: **0.000** over 3234 trials (expected ≈ chance ≈ 0 for nonce retrieval).
+- no-needle (absent) accuracy: **0.000** over 3230 trials (expected ≈ chance ≈ 0 for nonce retrieval).
 - counterfactual-needle accuracy: **1.000** over 2160 trials (expected ≈ 1.0 = uses in-context value).
 
 ## Scale
 
-- registered grid (easy+hard): **12582** trials, **7338** present-needle, **48** present-needle failures (overall present-needle accuracy **0.9935**).
+- registered grid (easy+hard): **12570** trials, **7330** present-needle, **48** present-needle failures (overall present-needle accuracy **0.9935**).
 - deep robustness add-on (3-hop+decoy, A-only): **340** trials, **190** present-needle, **0** failures (accuracy **1.0000**).
-- grand total logged: **12922** trials.
-- models: claude-haiku-4-5-20251001, claude-sonnet-4-6, gpt-5.4, gpt-5.4-mini, gpt-5.5.
-- context lengths: [5000, 20000, 50000, 90000, 120000, 150000]; positions: ['end', 'front', 'mid', 'na'].
+- grand total logged: **12910** trials.
+- models: claude-sonnet-4-6, gpt-5.4, gpt-5.4-mini, gpt-5.5.
+- context lengths: [5000, 20000, 50000, 90000, 150000]; positions: ['end', 'front', 'mid', 'na'].
