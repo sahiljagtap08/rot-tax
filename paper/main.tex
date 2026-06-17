@@ -657,19 +657,23 @@ itself produce degradation in the regime we swept; we cannot determine its
 contribution in real multi-turn agentic workflows, where position, distance,
 and task and error dynamics co-vary with length.
 
-\paragraph{Deeper-latent robustness (closing the 2-hop limitation).}
-Because the hard retrieval probe is only 2-hop, we ran a focused $340$-trial
-extension with a strictly harder latent probe: a $3$-hop routing chain
+\paragraph{Deeper-latent robustness (beyond 2-hop).}
+Because the hard retrieval probe is only 2-hop, we ran a focused add-on with a
+harder latent probe: a $3$-hop routing chain
 (\textsf{datastore}$\to$\textsf{alias}$\to$\textsf{alias}$_2\to$\textsf{token})
 presented alongside a \emph{competing decoy chain} that resolves to a different
 token, so the model must follow the correct chain and resist interference---the
-regime NoLiMa identifies as harshest~\cite{modarressi2025nolima}. Across all three
-models tested (\texttt{gpt-5.4-mini}, \texttt{gpt-5.5}, \texttt{claude-sonnet-4-6}),
-present-needle accuracy was $1.000$ at every length to 150k, with the no-needle
-control again at chance ($0.000$); notably, even \texttt{gpt-5.4-mini}---the only
-model to slip anywhere---solves the deeper, distractor-laden retrieval perfectly.
-The null thus holds not just for shallow latent retrieval but for deeper,
-interference-laden latent retrieval as well.
+regime NoLiMa identifies as harshest~\cite{modarressi2025nolima}. This add-on
+logged $340$ trials ($190$ present-needle, A-probe only) on three models
+(\texttt{gpt-5.4-mini}, \texttt{gpt-5.5}, \texttt{claude-sonnet-4-6});
+present-needle accuracy was $1.000$ at every length to 150k with $0$ failures,
+and the no-needle control again sat at chance ($0.000$). Notably,
+\texttt{gpt-5.4-mini}---the one model to slip on aggregation---solves the
+deeper, distractor-laden retrieval without error. The add-on is small and
+A-only, so it extends the absence of measurable length-driven degradation to
+deeper, interference-laden latent retrieval on these probes for the models
+tested, at coarse per-condition precision rather than as a tightly-powered
+result.
 
 %% ===== discussion =====
 \section{Discussion}
