@@ -1,5 +1,7 @@
 # The Rot Tax
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20753849.svg)](https://doi.org/10.5281/zenodo.20753849)
+
 A research harness measuring **context rot in agentic-coding sessions**: whether a coding
 agent's ability to use information *already in its context* degrades as session context
 accumulates — holding task difficulty exactly constant — and what a timed intervention
@@ -56,8 +58,29 @@ python -m harness.analyze --input results/rot_raw.jsonl
 
 The runner streams spend to `logs/spend.jsonl` and **aborts** if `budget_usd_ceiling` is hit.
 
+## Citing this work
+
+Preprint (with DOI): **https://doi.org/10.5281/zenodo.20753849**
+
+```bibtex
+@misc{jagtap2026contextrot,
+  title  = {Is Context Rot Real? A Controlled, Cross-Provider Null for
+            Length-Driven Degradation in Frontier Models up to 150k Tokens},
+  author = {Jagtap, Sahil},
+  year   = {2026},
+  doi    = {10.5281/zenodo.20753849},
+  url    = {https://doi.org/10.5281/zenodo.20753849},
+  note   = {Preprint, Zenodo},
+}
+```
+
+GitHub also renders `CITATION.cff` as a "Cite this repository" button.
+
 ## Status
 
-Harness + pre-registration complete and unit-tested offline. Real data collection is gated on
-an API key and budget approval (see the project notes). The mock path exists only to verify
-plumbing, never to produce findings.
+Data collection complete; the paper is published as a preprint at the DOI above. Across a
+pre-registered fixed-needle / growing-haystack factorial on four current models
+(gpt-5.5, gpt-5.4, gpt-5.4-mini, claude-sonnet-4-6) up to 150k tokens, we report a **bounded
+negative result**: no measurable length-driven degradation on the probes tested. The harness,
+data, and pre-registration in this repository reproduce that result. The mock path exists only
+to verify plumbing, never to produce findings.

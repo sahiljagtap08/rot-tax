@@ -1,0 +1,35 @@
+cff-version: 1.2.0
+message: "If you use this software, data, or paper, please cite the preprint below."
+title: "rot-tax: a controlled harness for measuring length-driven degradation in LLMs"
+authors:
+  - family-names: Jagtap
+    given-names: Sahil
+    affiliation: George Mason University
+    email: sjagtap2@gmu.edu
+version: v1
+date-released: 2026-06-18
+license: CC-BY-4.0
+repository-code: "https://github.com/sahiljagtap08/rot-tax"
+url: "https://doi.org/10.5281/zenodo.20753849"
+keywords:
+  - long-context language models
+  - context rot
+  - LLM evaluation
+  - needle in a haystack
+  - lost in the middle
+  - pre-registration
+  - null result
+  - instruction following
+  - frontier models
+preferred-citation:
+  type: article
+  title: "Is Context Rot Real? A Controlled, Cross-Provider Null for Length-Driven Degradation in Frontier Models up to 150k Tokens"
+  authors:
+    - family-names: Jagtap
+      given-names: Sahil
+      affiliation: George Mason University
+  year: 2026
+  doi: 10.5281/zenodo.20753849
+  url: "https://doi.org/10.5281/zenodo.20753849"
+  publisher:
+    name: Zenodo
